@@ -291,6 +291,14 @@ class OFF:
             # ///////////////////// VISUALIZE /////////////////////
             if (self.settings_vis["debug"]["turbine_effective_wind_speed"] and
                     t in self.settings_vis["debug"]["time"]):
+                # TEMP
+                #
+                print(f"self.wind_farm: {self.wind_farm}")
+                print(f"self.wind_farm.turbines: {self.wind_farm.turbines}")
+                print(f"len(self.wind_farm.turbines): {len(self.wind_farm.turbines)}")
+                print(f"self.sim_dir: {self.sim_dir}")
+                print(f"t: {t}")
+                #
                 self.wake_solver.vis_turbine_eff_wind_speed_field(self.wind_farm, self.sim_dir, t)
 
             # ///////////////////// PROPAGATE /////////////////////
