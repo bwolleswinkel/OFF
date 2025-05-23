@@ -38,8 +38,8 @@
 # Simulation settings
 #  The time step is given in seconds, the start and end time in seconds as well.
 sim:
-  name: Test sim
-  description: Test simulation with 1200s runtime, features a wind direction change from 225 to 235 deg
+  name: Three turbine sim
+  description: Three turbine simulation case with constant wind speed and wind direction, where the first (left-most) turbine is yawed from 0 to 20 deg in steps of 10 deg, with a rate of 0.3 deg/s. FROM; "The revised FLORIDyn model; implementation of heterogeneous flow and the Gaussian wake," Becker et al. (2022)
 
   sim:
     time step: 4.0
@@ -56,7 +56,7 @@ sim:
       enable: true
       level: WARNING
 
-# OFF stores all results in a run folder, which is by defalut located at "/runs". The user can specify a different location.
+# OFF stores all results in a run folder, which is by default located at "/runs". The user can specify a different location.
 #   The name of the default folder is "off_run_" followed by the current date and exact time.
 # The run folder contains a copy of the input yaml, the yaml used to init FLORIS, as well as the log file, and outputs.
 io:                             # Needs to be written by the user
@@ -67,39 +67,21 @@ io:                             # Needs to be written by the user
 # Wind farm settings
 #   The layout is given in x, y, z coordinates, where locations can be defined in meters or in D (rotor diameters).
 #   To distinguish between the two, the unit parameter is used. If set to D, the diameter parameter needs to be set.
-#   Note that the layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the trubine information.
+#   Note that the layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the turbine information.
 wind_farm:
   name: turbine array
-  description: Nine turbine case with IEA 10 MW turbines at 5D distance
+  description: Three turbine case with DTU 10 MW turbines at 5D distance
 
   farm:
     layout_x:
-      - 0.0
-      - 5.0
-      - 10.0
-      - 0.0
-      - 5.0
-      - 10.0
-      - 0.0
-      - 5.0
-      - 10.0
+      - 608.0
+      - 1500.0
+      - 2392.0
     layout_y:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 5.0
-      - 5.0
-      - 5.0
-      - 10.0
-      - 10.0
-      - 10.0
+      - 500.0
+      - 500.0
+      - 500.0
     layout_z:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
       - 0.0
       - 0.0
       - 0.0
@@ -107,16 +89,11 @@ wind_farm:
       - iea_10MW
       - iea_10MW
       - iea_10MW
-      - iea_10MW
-      - iea_10MW
-      - iea_10MW
-      - iea_10MW
-      - iea_10MW
-      - iea_10MW
     unit:
-      - D
+      - 1
     diameter: # Only needed if unit was set to D
-      - 198.0
+      - 178.4
+    # FIXME: What do I need to fill in here?
     boundaries_xyz:
       - -2.0
       - 12.0
@@ -131,7 +108,7 @@ wind_farm:
 #  There is also only one ambient corrector as of now.
 ambient:
   name: ambient_conditions
-  description: Constant wind speed at 8m/s coming from 270 deg (0 deg = north)
+  description: Constant wind speed at 8.2 m/s coming from 270 deg (0 deg = north)
 
   flow_field: # This struct is passed on to the AmbientCorrector to feed in the new flow properties
     air_density: 1.225
@@ -141,18 +118,12 @@ ambient:
       - 0.06
     # NOTE: As described here, multiple conditions lead to linear interpolation
     wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 225.0
-      - 225.0
-      - 235.0
-      - 235.0
+      - 270.0
     wind_directions_t:
       - 0.0
-      - 600.0
-      - 900.0
-      - 1200.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 8.0
+      - 8.2
     wind_speeds_t:
       - 0.0
     wind_veer: 0.0
@@ -171,8 +142,8 @@ solver:
     wake_model: "FLORIS GCH" #"PythonGaussianWake" # "FLORIS GCH"
     op_propagation: "frozen turbulence"
     extrapolation: "pair"
-    # Number of OPs per turbine. The chain of OPs should span long enough to cover the whole wind farm.
-    #  n_op * time_step * u_free_stream = covered distance
+    # Number of OPs per turbine. T
+    # NOTE: The chain of OPs should span long enough to cover the whole wind farm: n_op * time_step * u_free_stream = covered distance
     n_op: 200
 
 
@@ -259,15 +230,17 @@ controller:
    orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
-     - [225, 225, 225, 225, 225, 225, 225, 225, 225]
-     - [225, 225, 225, 225, 225, 225, 225, 225, 225]
-     - [235, 235, 235, 235, 235, 235, 235, 235, 235]
-     - [235, 235, 235, 235, 235, 235, 235, 235, 235]
+     - [270, 270, 270]
+     - [270, 270, 270]
+     - [260, 270, 270]
+     - [260, 270, 270]
+     - [250, 270, 270]
    orientation_t:          # in s
      - 0.0
-     - 600.0
-     - 900.0
-     - 90000.0
+     - 200.0
+     - 233.3
+     - 800.0
+     - 833.3
 
 
 # Turbine information
@@ -530,7 +503,151 @@ turbine:
     rotor_overhang: 7.07        # in m    # TODO Copied from DTU 10MW - Change!
     shaft_tilt: 5               # in deg  # TODO Copied from DTU 10MW - Change!
     yaw_rate_lim: 0.3           # deg/s   # TODO Find true value
-
+# FIXME: Apparently, the DTU 10MW is not available?
+# Turbine information
+#  The turbine information is used by OFF as well as by the wake model.
+#  Current issue (FLORIS): The turbine information is NOT passed on to FLORIS, so FLORIS needs to have the same information in its turbine library.
+#  In OFF, the turbine model is used to calculate the hub height & the power generated
+#  The turbine type needs to only be saved once. You can also add other, unused turbines to the list.
+# turbine:
+#   dtu_10MW:
+#     name: DTU 10 MW reference turbine
+#     performance:
+#       rated_power: 10000000     # in W
+#       rated_wind_speed: 11.4    # in m/s
+#       cutin_wind_speed: 4.0     # in m/s
+#       cutout_wind_speed: 25.0   # in m/s
+#       # cutin_rot_speed: 6.0      # in RPM
+#       # rated_rot_speed: 9.6      # in RPM
+#       Cp_curve:
+#         Cp_tb_values: [ ]
+#         Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
+#         Cp_tb_bpa: [ ]          # in deg
+#         Cp_u_values:
+#           - 
+#         Cp_u_wind_speeds:
+#           - 
+#       Ct_curve:
+#         Ct_tb_values: [ ]
+#         Ct_tb_tsr: [ ]
+#         Ct_tb_bpa: [ ]
+#         Ct_u_values:
+#           - 0.770113776
+#           - 0.776301765
+#           - 0.782430404
+#           - 0.781982993
+#           - 0.780246928
+#           - 0.777153006
+#           - 0.771853687
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.776845963
+#           - 0.767521911
+#           - 0.765104347
+#           - 0.758675026
+#           - 0.505649564
+#           - 0.431035612
+#           - 0.370827539
+#           - 0.320855929
+#           - 0.278805531
+#           - 0.243151019
+#           - 0.212773558
+#           - 0.186803785
+#           - 0.164542221
+#           - 0.145414565
+#           - 0.128943645
+#           - 0.114730283
+#           - 0.102438991
+#           - 0.091786964
+#           - 0.082535328
+#           - 0.074482009
+#           - 0.067455867
+#           - 0.061311766
+#           - 0.05592648
+#           - 0.051195261
+#           - 0.047029125
+#         Ct_u_wind_speeds:
+#           - 4.0
+#           - 4.514652562
+#           - 5.000795688
+#           - 5.457350016
+#           - 5.883301884
+#           - 6.277705571
+#           - 6.639685402
+#           - 6.968437691
+#           - 7.263232527
+#           - 7.523415391
+#           - 7.748408611
+#           - 7.937712648
+#           - 8.090907197
+#           - 8.20765213
+#           - 8.287688244
+#           - 8.330837837
+#           - 8.337005108
+#           - 8.367833853
+#           - 8.435590166
+#           - 8.540123611
+#           - 8.681202099
+#           - 8.858512398
+#           - 9.071660837
+#           - 9.320174171
+#           - 9.603500641
+#           - 9.921011189
+#           - 10.27200086
+#           - 10.65569038
+#           - 10.75773635
+#           - 11.51769068
+#           - 11.9940876
+#           - 12.49936091
+#           - 13.03238875
+#           - 13.59198769
+#           - 14.17691527
+#           - 14.7858728
+#           - 15.41750825
+#           - 16.07041923
+#           - 16.74315611
+#           - 17.43422525
+#           - 18.1420923
+#           - 18.86518562
+#           - 19.60189976
+#           - 20.35059904
+#           - 21.10962115
+#           - 21.87728087
+#           - 22.65187381
+#           - 23.43168018
+#           - 24.21496861
+#           - 25.0
+#     # generator_efficiency: 1.0
+#     hub_height: 119.0
+#     # pP: 1.88
+#     # pT: 1.88
+#     rotor_diameter: 178.4
+#     # TSR: 8.0
+#     # ref_density_cp_ct: 1.225
+#     # ref_tilt_cp_ct: 6.0
+#     # Determines the class of the turbine, other types like VAWT are not supported yet
+#     turbine_type: HAWT
+#     # Determines if the turbine is fixed base or floating, currently only fixed base is supported
+#     installation: fixed
+#     rotor_overhang: 7.07        # in m
+#     shaft_tilt: 5               # in deg
+#     yaw_rate_lim: 0.3           # deg/s
 
 # Visualization settings
 #  As of now, the visualization is mainly used for debugging purposes and many settings are placeholders.
@@ -539,24 +656,24 @@ vis:
     generate: True  # Master-switch to generate & store flow field data
     # As OFF isn't grid based, the flow field plots need a grid to be generated.
     boundaries:
-      - [ -2, 12]                 # x in D or m
-      - [ -2, 12]                 # y in D or m
-      - [ 0, 3]                   # z in D or m
+      - [-2, 12]                 # x in D or m
+      - [-2, 12]                 # y in D or m
+      - [0, 3]                   # z in D or m
     unit:
       - D
     # Only needed if unit was set to D
     diameter:
       - 178.4
     # x, y, z in points
-    resolution: [ 301, 301, 10 ] 
+    resolution: [301, 301, 10] 
     volume_3d: False
     slice_2d: True
-    slice_2d_xy: [ 119.0 ]          # z-coordinates for xy slices
-    slice_2d_xz: [ ]                # y-coordinates for xz slices
-    slice_2d_yz: [ ]                # x-coordinates for yz slices
-    slice_2d_p:                     # x,y,z coordinate of a point on a plane
+    slice_2d_xy: [119.0]          # z-coordinates for xy slices
+    slice_2d_xz: [ ]              # y-coordinates for xz slices
+    slice_2d_yz: [ ]              # x-coordinates for yz slices
+    slice_2d_p:                   # x,y,z coordinate of a point on a plane
       - [ ]
-    slice_2d_n:                     # x,y,z coordinate of a normal vector on a plane
+    slice_2d_n:                   # x,y,z coordinate of a normal vector on a plane
       - [ ]
     data_vel_background: True
     data_vel_effective: True
@@ -589,7 +706,7 @@ vis:
     effective_wf_layout: True  
     # Times at witch a debug plot of the wind farm is generated
     # FIXME: It appear that, whenever the time instance is not exactly in the simulation time, it is not plotted; we need to use nearest neighbor interpolation of some sort (and maybe display a warning).
-    time: [700] 
+    time: [100, 700, 1100] 
     # Turbines for which the debug plot is created
     iT: [0, 1] 
     # Generates the effective wind speed across the farm based on a ghost turbine
