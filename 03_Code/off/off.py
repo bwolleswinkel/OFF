@@ -238,7 +238,7 @@ class OFF:
                         t in self.settings_vis["debug"]["time"] and
                         idx in self.settings_vis["debug"]["iT"]):
                     # Plots the wind farm as simulated in the steady state model
-                    self.wake_solver.raise_flag_plot_wakes()
+                    self.wake_solver.raise_flag_plot_wakes(t)
 
                 if (self.settings_vis["debug"]["effective_wf_tile"] and
                         t in self.settings_vis["debug"]["time"]):

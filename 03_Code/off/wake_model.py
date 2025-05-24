@@ -528,13 +528,13 @@ class Floris4Wake(WakeModel):
         # Return the effective wind speed and the measurements
         return avg_vel.flatten()[i_t], measurements
 
-    def vis_flow_field(self):
+    def vis_flow_field(self, t: float):
         """
         Creates a plot of the wind farm applied to the given turbine using the FLORIS interface
         """
         fig, ax_horo_plane = plt.subplots()
         horizontal_plane = self.fmodel.calculate_horizontal_plane(height=self.wind_farm_layout[0, 2])
-        visualize_cut_plane(horizontal_plane, ax=ax_horo_plane, title="Horizontal", minSpeed=0, maxSpeed=10)
+        visualize_cut_plane(horizontal_plane, ax=ax_horo_plane, title=f"Horizontal (t = {t:.2f})", minSpeed=0, maxSpeed=10)
         plt.show()
 
     def vis_tile(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:

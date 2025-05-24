@@ -78,11 +78,12 @@ class WakeSolver(ABC):
             m further measurements, depending on the used wake model
         """
 
-    def raise_flag_plot_wakes(self):
+    def raise_flag_plot_wakes(self, t: float):
         """
         Raises a flag to plot the wakes duing the next call of the wake model
         """
         self._flag_plot_wakes = True
+        self._t_debug = t
 
     def _lower_flag_plot_wakes(self):
         """
@@ -357,7 +358,7 @@ class TWFSolver(WakeSolver):
 
         # Debug plot of effective wind farm layout
         if self._flag_plot_wakes:
-            self.floris_wake.vis_flow_field()
+            self.floris_wake.vis_flow_field(self._t_debug)
             self._lower_flag_plot_wakes()
 
         # Get effective wind speed from TWF "tile"

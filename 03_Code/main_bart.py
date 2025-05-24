@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/run_example_three_turbine.yaml'
+    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/run_example_nine_turbine_revised.yaml'
 
     # ====== BART ======
     
@@ -98,8 +98,9 @@ def main():
     N_sim = int((t_end - t_0)/ time_step)
     t_range = np.arange(t_0, t_end, time_step)
 
-    # Extract the number of wind turbines
+    # Extract the number of wind turbines and the layout
     n_wt = len(input_file['wind_farm']['farm']['layout_x'])
+    layout = np.column_stack((input_file['wind_farm']['farm']['layout_x'], input_file['wind_farm']['farm']['layout_y']))
 
     # Create the ambient input file
     wd_input_file = [input_file['ambient']['flow_field']['wind_directions_t'], input_file['ambient']['flow_field']['wind_directions']]
@@ -127,8 +128,19 @@ def main():
 
     # ------ PLOTTING ------
 
+    # Set the plotting params
+    plot_power_seperate = True
+
     # FIXME: For some reason, an empty plot is generated above? This does not seem to be caused by debug, but rather by the code I added?
     plt.close('all')
+
+    # Plot the layout
+    fig_layout, ax_layout = plt.subplots()
+    ax_layout.plot(layout[:, 0], layout[:, 1], 'x')
+    for idx in range(n_wt):
+        ax_layout.text(layout[idx, 0], layout[idx, 1], f'{idx:02d}', fontsize=12, ha='left', va='bottom')
+    fig_layout.suptitle("Layout of the wind farm")
+    
 
     # Plot the wind direction, speed, and TI over time
     fig_ambient, (ax_wd, ax_ws, ax_ti) = plt.subplots(3, 1)
@@ -153,12 +165,12 @@ def main():
 
     # Plot the control settings
     fig_control, (ax_yaw, ax_powersetpoint, ax_status) = plt.subplots(3, 1)
-    # FIXME: Comment this out, as this does not have the correct values
-    #
-    for idx in range(n_wt):
-        ax_yaw.plot([0, 200, 800, 1200], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250, 250], [270, 270, 270, 270], [270, 270, 270, 270]]) if elem == idx][0], '--', color=col_vals[idx], drawstyle='steps-post', alpha=0.5)
-        ax_yaw.plot([0, 200, 800], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250], [270, 270, 270], [270, 270, 270]]) if elem == idx][0], 'o', color=col_vals[idx], drawstyle='steps-post', label=fr"Setpoint $\gamma_{{\mathrm{{ref}},{idx}}}$")
-    #
+    # # FIXME: Comment this out, as this does not have the correct values
+    # #
+    # for idx in range(n_wt):
+    #     ax_yaw.plot([0, 200, 800, 1200], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250, 250], [270, 270, 270, 270], [270, 270, 270, 270]]) if elem == idx][0], '--', color=col_vals[idx], drawstyle='steps-post', alpha=0.5)
+    #     ax_yaw.plot([0, 200, 800], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250], [270, 270, 270], [270, 270, 270]]) if elem == idx][0], 'o', color=col_vals[idx], drawstyle='steps-post', label=fr"Setpoint $\gamma_{{\mathrm{{ref}},{idx}}}$")
+    # #
     for idx in range(n_wt):
         ax_yaw.plot(t_range, yaw_ts[idx], color=col_vals[idx], label=fr"Actual $\gamma_{idx}$")
     ax_yaw.set_ylabel(r"Angle $\gamma_{i}$ (in °)")
@@ -168,15 +180,25 @@ def main():
     fig_control.suptitle("Control of each turbine")
 
     # Plot the power
-    fig_power, ax_power = plt.subplots()
-    for idx in range(n_wt):
-        ax_power.plot(t_range, power[idx], label=f'Power {idx:02d}')
-    ax_power.set_ylabel('Power (in W)')
-    ax_power.legend()
-    ax_power.set_xlabel(r"Time $t$ (in s)")
-    fig_power.suptitle("Power of turbines")
+    if plot_power_seperate:
+        fig_power, ax_power = plt.subplots(n_wt, 1, sharex=True)
+        for idx in range(n_wt):
+            ax_power[idx].plot(t_range, power[idx], color=col_vals[idx], label=f'Power {idx:02d}')
+            ax_power[idx].legend(loc='upper left')
+            ax_power[idx].set_ylim([0, 1.1 * max(power[idx])])
+        ax_power[-1].set_xlabel(r"Time $t$ (in s)")
+        fig_power.suptitle("Power of turbines")
+    else:
+        fig_power, ax_power = plt.subplots()
+        for idx in range(n_wt):
+            ax_power.plot(t_range, power[idx], label=f'Power {idx:02d}')
+        ax_power.set_ylabel('Power (in W)')
+        ax_power.legend()
+        ax_power.set_xlabel(r"Time $t$ (in s)")
+        fig_power.suptitle("Power of turbines")
 
     # Show the plots
+    # plt.close(fig_layout)
     # plt.close(fig_ambient)
     # plt.close(fig_control)
     # plt.close(fig_power)
