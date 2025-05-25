@@ -49,9 +49,12 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/run_example_three_turbine_matlab.yaml'
+    input_file_name = 'run_example_3T_late_turning'
 
     # ====== BART ======
+
+    # Create the input file
+    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/{input_file_name}.yaml'
     
     # Tell the simulation what to run
     #   The run file needs to contain everything, the wake model, the ambient conditions etc.
@@ -81,7 +84,7 @@ def main():
     import matplotlib.pyplot as plt
 
     # Extract the path name
-    path_name_measurements = Path(oi.off_sim.sim_dir).name
+    path_name_run = Path(oi.off_sim.sim_dir).name
     path_name_input = Path(path_input)
 
     # Read the wind direction as two lists
@@ -102,6 +105,13 @@ def main():
     n_wt = len(input_file['wind_farm']['farm']['layout_x'])
     layout = np.column_stack((input_file['wind_farm']['farm']['layout_x'], input_file['wind_farm']['farm']['layout_y']))
 
+    # Extract parameters from the wind turbine
+    air_density = input_file['ambient']['flow_field']['air_density']
+    rotor_diameter = input_file['turbine']['iea_10MW']['rotor_diameter']
+    generator_efficiency = input_file['turbine']['iea_10MW']['generator_efficiency']
+    u_power_coeffs, C_P_coeffs = np.array(input_file['turbine']['iea_10MW']['performance']['Cp_curve']['Cp_u_wind_speeds']), np.array(input_file['turbine']['iea_10MW']['performance']['Cp_curve']['Cp_u_values'])
+    u_thrust_coeffs, C_T_coeffs = np.array(input_file['turbine']['iea_10MW']['performance']['Ct_curve']['Ct_u_wind_speeds']), np.array(input_file['turbine']['iea_10MW']['performance']['Ct_curve']['Ct_u_values'])
+
     # Create the ambient input file
     wd_input_file = [input_file['ambient']['flow_field']['wind_directions_t'], input_file['ambient']['flow_field']['wind_directions']]
     ws_input_file = [input_file['ambient']['flow_field']['wind_speeds_t'], input_file['ambient']['flow_field']['wind_speeds']]
@@ -116,20 +126,29 @@ def main():
     ws_ts = np.interp(t_range, ws_input_file[0], ws_input_file[1])
     ti_ts = np.interp(t_range, ti_input_file[0], ti_input_file[1])
 
-    # Add the yaw angles
-    # NOTE: We are using the FLORIS convention, where positive yaw is in the counter-clockwise direction
-    yaw_ts = [wd_ts - np.interp(t_range, yaw_input_file[0], [yaw_input_file[1][t][idx] for t in range(len(yaw_input_file[0]))]) for idx in range(n_wt)]
-
     # Add the power measurements as time-series
-    measurements = pd.read_csv(f'runs/{path_name_measurements}/measurements.csv')
+    measurements = pd.read_csv(f'runs/{path_name_run}/measurements.csv')
+    control_applied = pd.read_csv(f'runs/{path_name_run}/applied_control.csv')
 
     # Extract the power
     power = [measurements.loc[measurements['t_idx'] == idx, 'power_OFF'] for idx in range(n_wt)]
 
+    # Extract the C_P and C_T curver
+    C_P = []
+    C_T = [measurements.loc[measurements['t_idx'] == idx, 'Ct_FLORIS'] for idx in range(n_wt)]
+
+    # Extract the local wind speed and local TI
+    ws_local = [measurements.loc[measurements['t_idx'] == idx, 'u_abs_eff_FLORIS'] for idx in range(n_wt)]
+    ti_local = [measurements.loc[measurements['t_idx'] == idx, 'TI_FLORIS'] for idx in range(n_wt)]
+
+    # Extract the yaw angles, and actual orientation
+    yaw_angles = [control_applied.loc[control_applied['t_idx'] == idx, 'yaw'] for idx in range(n_wt)]
+    turbine_orientation = [control_applied.loc[control_applied['t_idx'] == idx, 'orientation'] for idx in range(n_wt)]
+
     # ------ PLOTTING ------
 
     # Set the plotting params
-    plot_power_seperate = True
+    plot_power_seperate = False
 
     # FIXME: For some reason, an empty plot is generated above? This does not seem to be caused by debug, but rather by the code I added?
     plt.close('all')
@@ -140,31 +159,39 @@ def main():
     for idx in range(n_wt):
         ax_layout.text(layout[idx, 0], layout[idx, 1], f'{idx:02d}', fontsize=12, ha='left', va='bottom')
     fig_layout.suptitle("Layout of the wind farm")
-    
 
-    # Plot the wind direction, speed, and TI over time
-    fig_ambient, (ax_wd, ax_ws, ax_ti) = plt.subplots(3, 1)
-    ax_wd.plot(t_range, wd_ts, color='blue', label=r'Interpolated')
-    ax_wd.plot(wd_input_file[0], wd_input_file[1], 'o', color='blue', markersize=2, label=r'Specified')
-    ax_wd.set_ylabel(r"Direction $\theta$ (in °)")
-    ax_wd_compass = ax_wd.twinx()
-    ax_wd_compass.set_yticks(np.arange(0, 360 + 1, 45))
-    ax_wd_compass.set_yticklabels(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'])
-    ax_wd_compass.set_ylim(ax_wd.get_ylim())
-    ax_wd.legend(loc='upper left', ncols=2)
-    ax_ws.plot(t_range, ws_ts, color='green', label=r'Interpolated')
-    ax_ws.plot(ws_input_file[0], ws_input_file[1], 'o', color='green', markersize=2, label=r'Specified')
-    ax_ws.set_ylabel(r"Wind speed $U_{\infty}$ (in m/s)")
-    ax_ws.legend(loc='upper left', ncols=2)
-    ax_ti.plot(t_range, ti_ts * 100, color='red', label=r'Interpolated')
-    ax_ti.plot(ti_input_file[0], [ti * 100 for ti in ti_input_file[1]], 'o', color='red', markersize=2, label=r'Specified')
-    ax_ti.set_ylabel("Turbulence intensity (in %)")
-    ax_ti.legend(loc='upper left', ncols=2)
-    ax_ti.set_xlabel(r"Time $t$ (in s)")
+    # Plot the C_P and C_T curves over wind speeds
+    fig_power_thrust_coeffs, (ax_power_coeffs, ax_thrust_coeffs, ax_power_curve) = plt.subplots(3, 1)
+    ax_power_coeffs.plot(u_power_coeffs, C_P_coeffs, color=col_vals[0], label=r'$C_\mathrm{P}(u_{\mathrm{eff}})$')
+    ax_power_coeffs.legend(loc='upper right')
+    ax_thrust_coeffs.plot(u_thrust_coeffs, C_T_coeffs, color=col_vals[1], label=r'$C_\mathrm{T}(u_{\mathrm{eff}})$')
+    ax_thrust_coeffs.legend(loc='upper right')
+    ax_power_curve.set_xlabel(r"Wind speed (in m/s)")
+    fig_power_thrust_coeffs.suptitle("Power and thrust coefficients over wind speeds")
+    
+    # Plot the ambient wind direction, speed, and TI over time
+    fig_ambient, (ax_ambient_wd, ax_ambient_ws, ax_ambient_ti) = plt.subplots(3, 1)
+    ax_ambient_wd.plot(t_range, wd_ts, color='blue', label=r'Interpolated')
+    ax_ambient_wd.plot(wd_input_file[0], wd_input_file[1], 'o', color='blue', markersize=2, label=r'Specified')
+    ax_ambient_wd.set_ylabel(r"Direction $\theta$ (in °)")
+    ax_ambient_wd_compass = ax_ambient_wd.twinx()
+    ax_ambient_wd_compass.set_yticks(np.arange(0, 360 + 1, 45))
+    ax_ambient_wd_compass.set_yticklabels(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'])
+    ax_ambient_wd_compass.set_ylim(ax_ambient_wd.get_ylim())
+    ax_ambient_wd.legend(loc='upper left', ncols=2)
+    ax_ambient_ws.plot(t_range, ws_ts, color='green', label=r'Interpolated')
+    ax_ambient_ws.plot(ws_input_file[0], ws_input_file[1], 'o', color='green', markersize=2, label=r'Specified')
+    ax_ambient_ws.set_ylabel(r"Wind speed $U_{\infty}$ (in m/s)")
+    ax_ambient_ws.legend(loc='upper left', ncols=2)
+    ax_ambient_ti.plot(t_range, ti_ts * 100, color='red', label=r'Interpolated')
+    ax_ambient_ti.plot(ti_input_file[0], [ti * 100 for ti in ti_input_file[1]], 'o', color='red', markersize=2, label=r'Specified')
+    ax_ambient_ti.set_ylabel("Turbulence intensity (in %)")
+    ax_ambient_ti.legend(loc='upper left', ncols=2)
+    ax_ambient_ti.set_xlabel(r"Time $t$ (in s)")
     fig_ambient.suptitle("Ambient conditions")
 
     # Plot the control settings
-    fig_control, (ax_yaw, ax_powersetpoint, ax_status) = plt.subplots(3, 1)
+    fig_control, (ax_yaw, ax_orientation, ax_powersetpoint, ax_status) = plt.subplots(4, 1)
     # # FIXME: Comment this out, as this does not have the correct values
     # #
     # for idx in range(n_wt):
@@ -172,12 +199,37 @@ def main():
     #     ax_yaw.plot([0, 200, 800], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250], [270, 270, 270], [270, 270, 270]]) if elem == idx][0], 'o', color=col_vals[idx], drawstyle='steps-post', label=fr"Setpoint $\gamma_{{\mathrm{{ref}},{idx}}}$")
     # #
     for idx in range(n_wt):
-        ax_yaw.plot(t_range, yaw_ts[idx], color=col_vals[idx], label=fr"Actual $\gamma_{idx}$")
+        ax_yaw.plot(t_range, yaw_angles[idx], color=col_vals[idx], label=fr"Actual $\gamma_{idx}$")
     ax_yaw.set_ylabel(r"Angle $\gamma_{i}$ (in °)")
     ax_yaw.legend(loc='upper left', ncols=n_wt)
     ax_yaw.set_ylim([-30, 30])
+    for idx in range(n_wt):
+        ax_orientation.plot(t_range, turbine_orientation[idx], color=col_vals[idx], label=fr"$\phi_{idx}$")
+    ax_orientation.set_ylabel(r"Orientation (in °)")
+    ax_orientation.legend(loc='upper left', ncols=n_wt)
     ax_status.set_xlabel(r"Time $t$ (in s)")
     fig_control.suptitle("Control of each turbine")
+
+    # Plot the local wind direction, speed, and TI over time
+    fig_local, (ax_local_wd, ax_local_ws, ax_local_ti) = plt.subplots(3, 1)
+    for idx in range(n_wt):
+        ax_local_ws.plot(t_range, ws_local[idx], color=col_vals[idx], label=fr"Local $U_{{\infty}}^{idx}$")
+    ax_local_ws.set_ylabel(r"Wind speed (in m/s)")
+    ax_local_ws.legend(loc='upper left', ncols=n_wt)
+    for idx in range(n_wt):
+        ax_local_ti.plot(t_range, ti_local[idx] * 100, color=col_vals[idx], label=fr"Local $\mathrm{{TI}}^{idx}$")
+    ax_local_ti.set_ylabel(r"Turbulence intensity (in %)")
+    ax_local_ti.legend(loc='upper left', ncols=n_wt)
+    fig_local.suptitle("Local inflow conditions")
+
+    # Plot the effective C_P and C_T values
+    fig_power_thrust_eff, (ax_power_coeffs_eff, ax_thrust_coeffs_eff) = plt.subplots(2, 1)
+    for idx in range(n_wt):
+        ax_thrust_coeffs_eff.plot(t_range, C_T[idx], label=f'WT{idx:02d}')
+    ax_thrust_coeffs_eff.set_ylabel(r"$C_{\mathrm{T}}$ (in -)")
+    ax_thrust_coeffs_eff.legend(loc='upper left', ncols=n_wt)
+    ax_thrust_coeffs_eff.set_xlabel(r"Time $t$ (in s)")
+    fig_power_thrust_eff.suptitle(r"Effective $C_{\mathrm{P}}$ and $C_{\mathrm{T}}$ values")
 
     # Plot the power
     if plot_power_seperate:
@@ -199,8 +251,11 @@ def main():
 
     # Show the plots
     # plt.close(fig_layout)
+    # plt.close(fig_power_thrust_coeffs)
     # plt.close(fig_ambient)
     # plt.close(fig_control)
+    # plt.close(fig_local)
+    # plt.close(fig_power_thrust_eff)
     # plt.close(fig_power)
     plt.show()
 

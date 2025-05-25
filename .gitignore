@@ -23,3 +23,7 @@ __pycache__/
 off_run_*
 *.m
 *.asv
+
+# ====== BART ======
+
+scratchpad.py
