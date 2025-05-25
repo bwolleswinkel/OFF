@@ -102,7 +102,15 @@ class OFF:
         current_time = datetime.datetime.now()
         integer = int(current_time.strftime("%Y%m%d%H%M%S%f"))
 
-        return integer
+        # ====== BART ======
+
+        # Add spacing to the run id
+        run_id_str = str(integer)
+        run_id_str = 'D' + run_id_str[:4] + '_' + run_id_str[4:6] + '_' + run_id_str[6:8] + '_T' + run_id_str[8:10] + '_' + run_id_str[10:12] + '_' + run_id_str[12:14]
+
+        # ====== BART ======
+
+        return integer, run_id_str
 
     def __dir_init__(self, settings_sim: dict):
         """ Initialize the simulation folder and set the data path.
@@ -126,7 +134,7 @@ class OFF:
         sim_dir  = settings_sim.setdefault('simulation folder', None)
         data_dir = settings_sim.get('data folder', None)
 
-        run_id = self.__get_runid__()
+        run_id, run_id_spaced = self.__get_runid__()
 
         try:
             root_dir = data_dir or f'{os.environ["OFF_PATH"]}/runs/'
@@ -138,7 +146,7 @@ class OFF:
                 root_dir = data_dir or f'{os.environ["PWD"]}/runs/'
             lg.warning('Initial root runs directory path retrieval was unsuccessful, used ' + root_dir)
 
-        self.sim_dir = f'{root_dir}/off_run_{run_id}' if sim_dir is None else sim_dir
+        self.sim_dir = f'{root_dir}/off_run_{run_id_spaced}' if sim_dir is None else sim_dir
         self.root_dir = root_dir[:-len("runs/")]
 
         if not os.path.exists(self.sim_dir):

@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/run_example_nine_turbine_revised.yaml'
+    path_input = f'{off.OFF_PATH}/02_Examples_and_Cases/02_Example_Cases/run_example_three_turbine_matlab.yaml'
 
     # ====== BART ======
     
