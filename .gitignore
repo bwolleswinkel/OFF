@@ -27,3 +27,4 @@ off_run_*
 # ====== BART ======
 
 scratchpad.py
+.vscode/

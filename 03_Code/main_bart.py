@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_3T_late_turning'
+    input_file_name = 'run_example_sanjith_modified'
 
     # ====== BART ======
 
@@ -82,6 +82,7 @@ def main():
     import pandas as pd
     import numpy as np
     import matplotlib.pyplot as plt
+    import matplotlib as mpl
 
     # Extract the path name
     path_name_run = Path(oi.off_sim.sim_dir).name
@@ -149,6 +150,9 @@ def main():
 
     # Set the plotting params
     plot_power_seperate = False
+
+    # FIXME: There is this wierd offset notation, which I want to disable
+    mpl.rcParams['axes.formatter.useoffset'] = False
 
     # FIXME: For some reason, an empty plot is generated above? This does not seem to be caused by debug, but rather by the code I added?
     plt.close('all')

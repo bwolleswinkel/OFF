@@ -1,3 +1,7 @@
 {
-    "autoDocstring.docstringFormat": "numpy"
+    "autoDocstring.docstringFormat": "numpy",
+    "cSpell.words": [
+        "downregulated",
+        "downregulation"
+    ]
 }
