@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 # ------ PARAMETERS ------
 
 # Select the file to read
-file_name = '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/NREL5MW.csv'
+file_name = '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_nrel.csv'  # '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_mulder.csv' | '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_nrel.csv'
 
 # Select the downregulation setting
 u_down = 9.0  # m/s
@@ -20,10 +20,14 @@ factor_down = 0.5  # Downregulation factor (factor_down * 100% of available powe
 
 # Load the data
 match file_name:
-    case '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/NREL5MW.csv':
+    case '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_mulder.csv':
         Data = np.loadtxt(file_name, delimiter=';', skiprows=1)
         pitch, tsr, Cp, Ct, stall = [np.flipud(Data[:, i].reshape(33, 51, order='F')) for i in [1, 2, 3, 4, -1]]
         pitch_range, tsr_range = [-5, 20], [2, 10]
+    case '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_nrel.csv':
+        Data = np.loadtxt(file_name, delimiter=';', skiprows=1)
+        (pitch, tsr, Cp, Ct), stall = [np.flipud(Data[:, i].reshape(300, 120, order='F')) for i in [1, 2, 3, 4]], np.full((300, 120), np.nan)
+        pitch_range, tsr_range = [-10, 50], [0.05, 50]
     case _:
         raise ValueError(f"Unsupported file: {file_name}")
     
