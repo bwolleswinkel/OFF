@@ -50,6 +50,10 @@ Cp_u = 2 * P_u / (air_density * np.pi * (rotor_radius ** 2) * (u ** 3) * generat
 # Create an interpolation function for Cp and Ct
 Cp_interp = lambda lbd_pitch, lbd_tsr: sp.interpolate.griddata(np.array((pitch.flatten(), tsr.flatten())).T, Cp.flatten(), (lbd_pitch, lbd_tsr))
 Ct_interp = lambda lbd_pitch, lbd_tsr: sp.interpolate.griddata(np.array((pitch.flatten(), tsr.flatten())).T, Ct.flatten(), (lbd_pitch, lbd_tsr))
+
+# Find the maximum Cp value
+# indices_max_value = np.nanargmax(Cp)
+# pitch_max_value, tsr_max_value, Cp_max_value =  Cp[indices_max_value]
     
 # Calculate the available and downregulation power
 P_down_available = np.interp(u_down, u, P_u)
@@ -94,14 +98,14 @@ ax_ct_u.set_xlim([0, 30])
 
 # Plot the Cp and Ct curves
 fig_cp_ct_pitch_tsr, (ax_cp, ax_ct, ax_stall) = plt.subplots(1, 3)
-col_cp = ax_cp.imshow(Cp, aspect='auto', cmap='inferno', vmin=0, vmax=Cp.max(), extent=(*pitch_range, *tsr_range))
-ax_cp.imshow(Cp_agrees, aspect='auto', cmap='Greens', vmin=0, vmax=Cp.max(), extent=(*pitch_range, *tsr_range))
+col_cp = ax_cp.imshow(Cp, aspect='auto', cmap='inferno', vmin=0, vmax=np.nanmax(Cp), extent=(*pitch_range, *tsr_range))
+ax_cp.imshow(Cp_agrees, aspect='auto', cmap='Greens', vmin=0, vmax=np.nanmax(Cp), extent=(*pitch_range, *tsr_range))
 ax_cp.plot(np.full(tsr_lambda_available.size, 0), tsr_lambda_available, 'o', color='red', label=fr"u = {u_down}, $P_{{\mathrm{{available}}}}$")
 ax_cp.legend(loc='upper right')
 ax_cp_rotor_speed = ax_cp.twinx()
 ax_cp_rotor_speed.set_ylabel(fr"Rotor speed for $u_{{\mathrm{{down}}}}$ = {u_down} (in RPM)")
 ax_cp_rotor_speed.set_ylim(rotor_speed_down)
-col_ct = ax_ct.imshow(Ct, aspect='auto', cmap='inferno', vmin=0, vmax=Ct.max(), extent=(*pitch_range, *tsr_range))
+col_ct = ax_ct.imshow(Ct, aspect='auto', cmap='inferno', vmin=0, vmax=np.nanmax(Ct), extent=(*pitch_range, *tsr_range))
 ax_stall.imshow(stall, aspect='auto', cmap='coolwarm', vmin=0, vmax=1, extent=(*pitch_range, *tsr_range))
 ax_cp.set_xlabel(r"Blade pitch $\beta$ (in °)")
 ax_ct.set_xlabel(r"Blade pitch $\beta$ (in °)")

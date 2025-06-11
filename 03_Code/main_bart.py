@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_sanjith_modified'
+    input_file_name = 'run_nine_turbine_marcus_revised'
 
     # ====== BART ======
 
@@ -151,8 +151,10 @@ def main():
     # Set the plotting params
     plot_power_seperate = False
 
-    # FIXME: There is this wierd offset notation, which I want to disable
+    # FIXME: There is this wierd offset notation, which I want to disable; this below does NOT work
     mpl.rcParams['axes.formatter.useoffset'] = False
+    # mpl.rcParams['axes.formatter.use_locale'] = False
+    # mpl.rcParams['axes.formatter.use_mathtext'] = False
 
     # FIXME: For some reason, an empty plot is generated above? This does not seem to be caused by debug, but rather by the code I added?
     plt.close('all')
@@ -251,7 +253,19 @@ def main():
         ax_power.set_ylabel('Power (in W)')
         ax_power.legend()
         ax_power.set_xlabel(r"Time $t$ (in s)")
+        # FIXME: To remove this weird scaling, does NOT work!!
+        ax_power.ticklabel_format(style='plain', useOffset=False)
+        ax_power.set_ylim([0.9 * min([np.min(power_idx) for power_idx in power]), 1.1 * max([np.max(power_idx) for power_idx in power])])
         fig_power.suptitle("Power of turbines")
+
+    # Plot the total 
+    fig_total_power, ax_total_power = plt.subplots()
+    total_power = np.sum(power, axis=0)
+    ax_total_power.plot(t_range, total_power, '--', color='black', label='Total power')
+    ax_total_power.set_ylabel('Power (in W)')
+    ax_total_power.legend()
+    ax_total_power.set_xlabel(r"Time $t$ (in s)")
+    fig_total_power.suptitle("Total power of the wind farm")
 
     # Show the plots
     # plt.close(fig_layout)
@@ -261,6 +275,7 @@ def main():
     # plt.close(fig_local)
     # plt.close(fig_power_thrust_eff)
     # plt.close(fig_power)
+    # plt.close(fig_total_power)
     plt.show()
 
     # ====== BART ======
