@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_nine_turbine_marcus_revised'
+    input_file_name = 'run_three_turbine_marcus_revised'
 
     # ====== BART ======
 

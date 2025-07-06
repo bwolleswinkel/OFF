@@ -1,0 +1,20 @@
+# FROM: "Definition of a 5-MW Reference Wind Turbine for Offshore System Development," Jonkman et al. (2009) | NREL
+name: NREL 5 MW reference turbine
+performance:
+  rated_power: 5000000     # in W
+  rated_wind_speed: 11.4    # in m/s
+  cutin_wind_speed: 3.0     # in m/s
+  cutout_wind_speed: 25.0   # in m/s
+  cutin_rot_speed: 6.9      # in RPM
+  rated_rot_speed: 12.1      # in RPM
+  tsr_opt: 7.55
+  Cp_opt: 0.482
+generator_efficiency: 0.944
+gearbox_ratio: 97  # 97:1
+hub_height: 90
+rotor_overhang: 5        # in m
+shaft_tilt: 5               # in deg
+rotor_diameter: 126       # in m
+hub_inertia_low_speed_shaft: 4.0802E7  # in kg*m^2, NOTE: no idea if this is correct
+turbine_type:
+installation: fixed

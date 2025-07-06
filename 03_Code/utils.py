@@ -16,3 +16,13 @@ tableau_color_palette_10 = ["#4E79A7",  # 0: Blue
                             "#FF9DA7",  # 7: Pink
                             "#9C755F",  # 8: Brown
                             "#BAB0AC"]  # 9: Gray
+
+# ------------ FUNCTIONS ------------
+
+def convert(value: float, from_unit: str, to_unit: str) -> float:
+    """Convert a value from one unit to another."""
+    match (from_unit, to_unit):
+        case ('RPM', 'rad/s'):
+            return value * (2 * np.pi / 60)
+        case _:
+            raise ValueError(f"Unsupported conversion from '{from_unit}' to '{to_unit}'")
