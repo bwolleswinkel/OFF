@@ -9,12 +9,14 @@ performance:
   rated_rot_speed: 12.1      # in RPM
   tsr_opt: 7.55
   Cp_opt: 0.482
+  rated_gen_tor_torque: 43_093.55  # in Nm
 generator_efficiency: 0.944
 gearbox_ratio: 97  # 97:1
 hub_height: 90
 rotor_overhang: 5        # in m
 shaft_tilt: 5               # in deg
 rotor_diameter: 126       # in m
-hub_inertia_low_speed_shaft: 4.0802E7  # in kg*m^2, NOTE: no idea if this is correct
+# NOTE: This value might be incorrect, as there are multiple values NREL 5 MW reference turbine paper
+hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2
 turbine_type:
 installation: fixed

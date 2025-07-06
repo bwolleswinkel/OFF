@@ -27,7 +27,7 @@ match file_name:
     case '02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_nrel.csv':
         Data = np.loadtxt(file_name, delimiter=';', skiprows=1)
         (pitch, tsr, Cp, Ct), stall = [np.flipud(Data[:, i].reshape(300, 120, order='F')) for i in [1, 2, 3, 4]], np.full((300, 120), np.nan)
-        pitch_range, tsr_range = [-10, 50], [0.05, 50]
+        pitch_range, tsr_range = [-10, 50], [0.05, 15]
     case _:
         raise ValueError(f"Unsupported file: {file_name}")
     
@@ -38,11 +38,11 @@ fmodel.set(turbine_type=['nrel_5MW'])
 # Extract the thrust coefficient
 u = fmodel.core.farm.turbine_map[0].power_thrust_table['wind_speed']
 Ct_u = fmodel.core.farm.turbine_map[0].power_thrust_table['thrust_coefficient']
-P_u = fmodel.core.farm.turbine_map[0].power_thrust_table['power']
+P_u = fmodel.core.farm.turbine_map[0].power_thrust_table['power'] * 1E3  # Convert to W
 
 # Set some parameters
-# FIXME: This only makes sense if the generator efficiency is 0.1%, which seems extremely wrong.
-air_density, rotor_radius, generator_efficiency = 1.225, fmodel.core.farm.turbine_map[0].rotor_radius, 0.00105
+air_density, rotor_radius = 1.225, fmodel.core.farm.turbine_map[0].rotor_radius
+generator_efficiency = 0.994
 
 # Calculate the power coefficient
 Cp_u = 2 * P_u / (air_density * np.pi * (rotor_radius ** 2) * (u ** 3) * generator_efficiency)
@@ -81,11 +81,11 @@ print(f"Wind speed: {u_down}, downregulation: {factor_down * 100}% (Available po
 
 # Plot the Cp and Ct curves indexed by wind speed
 fig_cp_ct_u, (ax_power_u, ax_cp_u, ax_ct_u) = plt.subplots(3, 1, sharex=True)
-ax_power_u.plot(u, P_u, label="Power $P(u)$")
+ax_power_u.plot(u, P_u * 1E-6, label="Power $P(u)$")
 ax_power_u.axvline(u_down, color='red', linestyle='--', label=f"Downregulation at {u_down:.1f} m/s")
 ax_power_u.plot(u_down, P_down_available, 'o', color='red')
 ax_power_u.plot(u_down, P_down, 'x', color='orange', label=fr"$\eta_{{\mathrm{{down}}}}$ = {factor_down:.2f}, $P_{{\mathrm{{down}}}}$ = {P_down:.0f}")
-ax_power_u.set_ylabel('Power (in W)')
+ax_power_u.set_ylabel('Power (in MW)')
 ax_power_u.legend(loc='upper right')
 ax_cp_u.plot(u, Cp_u, label=r"$C_{\mathrm{P}}(u)$")
 ax_cp_u.set_ylabel(r"Power coefficient (in -)")
