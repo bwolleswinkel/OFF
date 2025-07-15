@@ -1,45 +1,16 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import control as ct
 
-Cp = np.loadtxt('Cp.csv', delimiter=';')
-Ct = np.loadtxt('Ct.csv', delimiter=';')
+omg_n = 11.11  # natural frequency of the pitch actuator (in rad/s)
+eta = 0.6  # damping ratio of the pitch actuator
 
-Cp = np.flipud(Cp)
-Ct = np.flipud(Ct)
+s = ct.tf('s')
+G_pitch = omg_n ** 2 / (s ** 2 + 2 * eta * omg_n * s + omg_n ** 2)  # transfer function of the pitch actuator
 
-# plt.imshow(Cp, aspect='equal', cmap='inferno')
-# plt.show()
+sys = ct.tf2ss(G_pitch)  # convert to state-space representation
+sys, T = ct.canonical_form(sys, 'observable')  # convert to controllable canonical form
+A, B, C, D = sys.A, sys.B, sys.C, sys.D
 
-# plt.imshow(Ct, aspect='equal', cmap='inferno')
-# plt.show()
-
-pitch_range = np.linspace(-10, 50, Cp.shape[1] + 1)
-pitch_range = np.delete(pitch_range, np.isclose(pitch_range, -0.5))  # Remove the first element 
-
-Pitch, TSR = np.meshgrid(pitch_range, np.linspace(15, 0.05, Cp.shape[0]), indexing='xy')
-
-print(pitch_range)
-
-Pitch = np.flipud(Pitch)
-TSR = np.flipud(TSR)
-Cp = np.flipud(Cp)
-Ct = np.flipud(Ct)
-
-Data = np.column_stack((np.arange(Cp.size), Pitch.flatten(order='F'), TSR.flatten(order='F'), Cp.flatten(order='F'), Ct.flatten(order='F')))
-
-np.savetxt('Cp_Ct_NREL5MW_nrel.csv', Data, delimiter=';', header='idx;pitch;tsr;Cp;Ct', comments='', fmt=['%d', '%.2f', '%.2f', '%.6f', '%.6f'])
-
-Data = np.loadtxt('Cp_Ct_NREL5MW_nrel.csv', delimiter=';', skiprows=1)
-pitch, tsr, Cp_load, Ct_load = [np.flipud(Data[:, i].reshape(300, 120, order='F')) for i in [1, 2, 3, 4]]
-
-plt.imshow(Cp_load, aspect='equal', cmap='inferno')
-plt.show()
-
-plt.imshow(Ct_load, aspect='equal', cmap='inferno')
-plt.show()
-
-plt.imshow(pitch, aspect='equal', cmap='inferno')
-plt.show()
-
-plt.imshow(tsr, aspect='equal', cmap='inferno')
-plt.show()
+print(A)
+print(B)
+print(C)
+print(D)

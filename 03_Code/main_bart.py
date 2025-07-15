@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_bart_small_dt'
+    input_file_name = 'run_example_bart_wt_dynamics'
 
     # ====== BART ======
 
@@ -105,13 +105,15 @@ def main():
     # Extract the number of wind turbines and the layout
     n_wt = len(input_file['wind_farm']['farm']['layout_x'])
     layout = np.column_stack((input_file['wind_farm']['farm']['layout_x'], input_file['wind_farm']['farm']['layout_y']))
+    # FIXME: Here we assume a heterogeneous wind farm, all turbine types are the same
+    turbine_type = input_file['wind_farm']['farm']['turbine_type'][0]
 
     # Extract parameters from the wind turbine
     air_density = input_file['ambient']['flow_field']['air_density']
-    rotor_diameter = input_file['turbine']['iea_10MW']['rotor_diameter']
-    generator_efficiency = input_file['turbine']['iea_10MW']['generator_efficiency']
-    u_power_coeffs, C_P_coeffs = np.array(input_file['turbine']['iea_10MW']['performance']['Cp_curve']['Cp_u_wind_speeds']), np.array(input_file['turbine']['iea_10MW']['performance']['Cp_curve']['Cp_u_values'])
-    u_thrust_coeffs, C_T_coeffs = np.array(input_file['turbine']['iea_10MW']['performance']['Ct_curve']['Ct_u_wind_speeds']), np.array(input_file['turbine']['iea_10MW']['performance']['Ct_curve']['Ct_u_values'])
+    rotor_diameter = input_file['turbine'][turbine_type]['rotor_diameter']
+    generator_efficiency = input_file['turbine'][turbine_type]['generator_efficiency']
+    u_power_coeffs, C_P_coeffs = np.array(input_file['turbine'][turbine_type]['performance']['Cp_curve']['Cp_u_wind_speeds']), np.array(input_file['turbine'][turbine_type]['performance']['Cp_curve']['Cp_u_values'])
+    u_thrust_coeffs, C_T_coeffs = np.array(input_file['turbine'][turbine_type]['performance']['Ct_curve']['Ct_u_wind_speeds']), np.array(input_file['turbine'][turbine_type]['performance']['Ct_curve']['Ct_u_values'])
 
     # Create the ambient input file
     wd_input_file = [input_file['ambient']['flow_field']['wind_directions_t'], input_file['ambient']['flow_field']['wind_directions']]

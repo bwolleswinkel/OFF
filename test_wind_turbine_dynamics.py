@@ -2,6 +2,11 @@
 
 # FIXME: For some reason, tsr_opt =/= (omega_rated * rotor_radius) / u_rated, which is not correct.
 # FIXME: The TSR is calculated with omega in rad/s, correct? From the Cp lookup table, tsr_opt = 7.55 seems to be the correct one.
+# FIXME: The dynamic model from "Self-learning-based secure control of wind power generation systems under cyber threat: Ensuring prescribed performance" is not working correctly.
+
+# TODO: Include the WT models from "Zero-Dynamics Attack on Wind Turbines and Countermeasures Using Generalized Hold and Generalized Sampler"
+# TODO: Include the WT models from "Self-learning-based secure control of wind power generation systems under cyber threat: Ensuring prescribed performance"
+
 """
 
 import yaml
@@ -13,22 +18,26 @@ import matplotlib.pyplot as plt
 # ------ PARAMETERS ------
 
 # Set which model to use
-wt_model = 'nrel_5MW'
+wt_model = 'nrel_5MW'  # 'nrel_5MW' | 'cart_1_5MW'
+
+# Set which dynamic model to use
+dynamics_model = 'pamososuryo_drive_train_2025'  # 'pamososuryo_drive_train_2025' | 'mazare_drive_train_2025'
 
 # Set atmospheric parameters
 air_density = 1.225  # kg/m^3, air density
 
 # Select the power mode
-power_mode = 'lookup_table'  # 'wind_speed' | 'lookup_table'
+power_mode = 'lookup_table'  # 'wind_speed' | 'lookup_table' | 'closed_form'
 
 # Set the controller mode
-controller_mode = 'greedy_lio'  # 'K_omega_squared' | 'K_omega_cubed' | 'greedy_lio'
+controller_mode = 'K_omega_squared'  # 'K_omega_squared' | 'K_omega_cubed' | 'greedy_lio'
 
 # Set the local wind speed 
-u_sim = [[0, 50, 50.1,], [11, 11, 4.0]]  # NOTE: The first list is time points, the second list is wind speeds (in m/s) at those time points
+# u_sim = [[0, 50, 50.1,], [11, 11, 4.0]]  # NOTE: The first list is time points, the second list is wind speeds (in m/s) at those time points
+u_sim = [[0,], [7.0]]
 
 # Set the blade pitch
-pitch_sim = [[0], [0]]  # NOTE: The first list is time points, the second list is pitch angles (in deg) at those time points
+pitch_sim = [[0], [1]]  # NOTE: The first list is time points, the second list is pitch angles (in deg) at those time points
 
 # Set the initial rotor speed
 omega_0 = 8  # RPM
@@ -49,7 +58,11 @@ def convert(value: float, from_unit: str, to_unit: str) -> float:
         case ('RPM', 'rad/s'):
             return value * ((2 * np.pi) / 60)
         case ('rad/s', 'RPM'):
-            return value * (60 / (2 * np.pi))
+            return 1 / convert(value, 'RPM', 'rad/s') if value != 0 else 0
+        case ('deg', 'rad'):
+            return value * ((2 * np.pi) / 360)
+        case ('rad', 'deg'):
+            return 1 / convert(value, 'deg', 'rad') if value != 0 else 0
         case _:
             raise ValueError(f"Unsupported conversion from '{from_unit}' to '{to_unit}'")
         
@@ -67,6 +80,7 @@ match wt_model:
         tsr_opt = input_file['performance']['tsr_opt']
         # FIXME: I have no idea if this value is correct
         inertia = float(input_file['hub_inertia_low_speed_shaft'])
+        # FIXME: I don't see how including the gearbox ratio (see "On the Analysis and Synthesis of Wind Turbine Side–Side Tower Load Control via Demodulation", Pamososuryo et al. (2024)) makes sense here
         gearbox_ratio = input_file['gearbox_ratio']
         generator_efficiency = input_file['generator_efficiency'] 
         u_cut_in = input_file['performance']['cutin_wind_speed']
@@ -74,10 +88,25 @@ match wt_model:
         rated_power = input_file['performance']['rated_power']
         omega_rated = convert(input_file['performance']['rated_rot_speed'], 'RPM', 'rad/s')
         rated_gen_tor_torque = input_file['performance']['rated_gen_tor_torque'] 
-        # FIXME: I don't see how including the gearbox ratio (see "On the Analysis and Synthesis of Wind Turbine Side–Side Tower Load Control via Demodulation", Pamososuryo et al. (2024)) makes sense here
-        gearbox_ratio = 1.0
         # FIXME: This value is from "On the Analysis and Synthesis of Wind Turbine Side–Side Tower Load Control via Demodulation", Pamososuryo et al. (2024), but I don't know if it is correct
         inertia = 4.0802E7  # kg*m^2
+    case 'cart_1_5MW':
+        rotor_radius = 35.0  # m
+        J_r = 2.96E6  # kg*m^2, rotor inertia
+        J_g = 53  # kg*m^2, generator inertia
+        K_s = 5.6E9  # N*m/rad, drive-train spring factor
+        D_s = 1E7  # N*m*s/rad, drive-train damping factor
+        N_g = 87.965  # gearbox ratio
+        generator_efficiency = 0.95  # generator efficiency
+        omg_n = 11.11  # natural frequency of the pitch actuator (in rad/s)
+        eta = 0.6  # damping ratio of the pitch actuator
+        rated_power = 1.5E6  # W, rated power
+        omega_rated = convert(2.1428, 'RPM', 'rad/s')  # rated rotor speed (in rad/s)
+        # FIXME: This value is not provided in the paper
+        u_rated = 8.4  # m/s, rated wind speed
+        # FIXME: All values below are not defined
+        Cp_opt = 0.4  # m/s, rated wind speed
+        tsr_opt = np.nan
     case _:
         raise ValueError(f"Unsupported wind turbine model '{wt_model}'")
     
@@ -99,6 +128,9 @@ match power_mode:
         pitch_range, tsr_range = [-10, 50], [0.05, 15]
         Cp_func = sp.interpolate.RegularGridInterpolator((np.linspace(*tsr_range, num=300), np.linspace(*pitch_range, num=120)), Cp, method='linear', bounds_error=False, fill_value=np.nan)
         Cp_interp = lambda lbd_pitch, lbd_tsr: Cp_func((lbd_pitch, lbd_tsr))
+    case 'closed_form':
+        tsr_star = lambda eval_tsr, eval_pitch: 1 / (eval_tsr + 0.08 * eval_pitch) - 0.035 / (eval_pitch ** 3 + 1)
+        Cp_interp = lambda eval_tsr, eval_pitch: 0.22 * (116 * tsr_star(eval_tsr, eval_pitch) - 0.4 * eval_pitch - 5) * np.exp(-12.5 * tsr_star(eval_tsr, eval_pitch))
     case _:
         raise ValueError(f"Unsupported power mode '{power_mode}'")
     
@@ -106,7 +138,7 @@ match power_mode:
 u_interp = lambda t: np.interp(t, u_sim[0], u_sim[1])
 
 # Create an interpolation for the wind speeds
-pitch_interp = lambda t: np.interp(t, pitch_sim[0], pitch_sim[1])
+pitch_ref_interp = lambda t: np.interp(t, pitch_sim[0], pitch_sim[1])
 
 # Calculate the controller gain
 # FIXME: Here we have that tsr_opt is NOT equal to (omega_rated * rotor_radius) / u_rated
@@ -116,54 +148,110 @@ K = 1 / (2 * (((omega_rated * rotor_radius) / u_rated) ** 3)) * air_density * np
 # ------ SIMULATION ------
 
 # Initialize the variables
-omega, pitch, tsr, power = [], [], [], []
+omega, omega_gen, theta, pitch, pitch_dot, tsr, power = [], [], [], [], [], [], []
 
 # Set the initial conditions
 omega.append(convert(omega_0, 'RPM', 'rad/s'))  # Initial rotor speed in RPM
+omega_gen.append(100)  # Initial generator speed in rad/s
+theta.append(0)  # Initial generator speed in rad/s
+pitch_dot.append(0)  # Initial pitch angle in rad
 
 # Simulate the wind turbine dynamics
 t = 0
 while t < T_sim:
-    #: Extract the current rotor speed
-    omega_t, u_t, pitch_t = omega[-1], u_interp(t), pitch_interp(t)
-    #: Calculate the tip speed ratio
-    tsr_t = (omega_t * rotor_radius) / u_t if u_t > 0 else 0
-    #: Set the arguments for the Cp interpolation
-    match power_mode:
-        case 'wind_speed':
-            args = (u_t,)
-        case 'lookup_table':
-            args = (tsr_t, pitch_t)
+    match dynamics_model:
+        case 'pamososuryo_drive_train_2025':
+            #: Extract the current rotor speed
+            omega_t, u_t, pitch_t = omega[-1], u_interp(t), pitch_ref_interp(t)
+            #: Calculate the tip speed ratio
+            tsr_t = (omega_t * rotor_radius) / u_t if u_t > 0 else 0
+            #: Set the arguments for the Cp interpolation
+            match power_mode:
+                case 'wind_speed':
+                    args = (u_t,)
+                case 'lookup_table':
+                    args = (tsr_t, convert(pitch_t, 'deg', 'rad'))
+                case _:
+                    raise ValueError(f"Unsupported power mode '{power_mode}'")
+            #: Calculate the aerodynamic torque
+            Cp_t = Cp_interp(*args)
+            T_a = 1 / (2 * omega_t) * air_density * np.pi * (rotor_radius ** 2) * Cp_t * (u_t ** 3)
+            #: Calculate the generator torque
+            match controller_mode:
+                case 'K_omega_squared':
+                    T_g = K * (omega_t ** 2)
+                case 'K_omega_cubed':
+                    T_g = K * (omega_t ** 3)
+                case 'greedy_lio':
+                    if u_t < u_rated:
+                        T_g = K_P_gen * (omega_t - (tsr_opt * u_t) / rotor_radius)
+                    else:
+                        T_g = rated_gen_tor_torque
+                case _:
+                    raise ValueError(f"Unsupported controller mode '{controller_mode}'")
+            #: Calculate the rotor acceleration
+            omega_dot = (T_a - T_g) / inertia
+            #: Calculate the power output
+            # FIXME: Does the generator efficiency need to be included here?
+            power_t = T_g * generator_efficiency * omega_t  # Power output in Watts
+            #: Calculate the new rotor speed
+            omega_new = omega_t + omega_dot * dt
+            #: Save the new rotor speed
+            omega.append(omega_new)
+            pitch.append(pitch_t)
+            tsr.append(tsr_t)
+            power.append(power_t)
+        case 'mazare_drive_train_2025':
+            #: Extract the current variables speed
+            omega_t, omega_gen_t, theta_t, u_t, pitch_t, pitch_dot_t, pitch_ref_t = omega[-1], omega_gen[-1], theta[-1], u_interp(t), pitch_ref_interp(t), pitch_dot[-1], pitch_ref_interp(t)
+            #: Calculate the tip speed ratio
+            tsr_t = (omega_t * rotor_radius) / u_t if u_t > 0 else 0
+            #: Set the arguments for the Cp interpolation
+            match power_mode:
+                case 'closed_form':
+                    args = (tsr_t, pitch_t)
+                case _:
+                    raise ValueError(f"Unsupported power mode '{power_mode}'")
+            #: Calculate the aerodynamic power
+            Cp_t = Cp_interp(*args)
+            P_aero = 1 / 2 * np.pi * (rotor_radius ** 2) * (u_t ** 3) * Cp_t
+            #: Calculate the generator torque
+            match controller_mode:
+                case 'K_omega_squared':
+                    T_g = K * (omega_t ** 2)
+                case 'K_omega_cubed':
+                    T_g = K * (omega_t ** 3)
+                case 'greedy_lio':
+                    if u_t < u_rated:
+                        T_g = K_P_gen * (omega_t - (tsr_opt * u_t) / rotor_radius)
+                    else:
+                        T_g = rated_gen_tor_torque
+                case _:
+                    raise ValueError(f"Unsupported controller mode '{controller_mode}'")
+            #: Calculate the rotor acceleration, generator acceleration, decoupling angle acceleration, and blade pitch angle acceleration
+            omega_dot = (P_aero / omega_t - omega_t * D_s + (omega_gen_t * D_s) / N_g - theta_t * K_s) / J_r
+            omega_gen_dot = ((omega_t * D_s) / N_g - (omega_gen_t * D_s) / N_g ** 2 + (theta_t * K_s) / N_g - T_g) / J_g
+            theta_dot = (omega_t - omega_gen_t / N_g)
+            pitch_ddot = -2 * eta * omg_n * pitch_dot_t - omg_n ** 2 * pitch_t + omg_n ** 2 * pitch_ref_t
+            #: Calculate the new rotor speed
+            omega_new = omega_t + omega_dot * dt
+            omega_gen_new = omega_gen_t + omega_gen_dot * dt
+            theta_new = theta_t + theta_dot * dt
+            pitch_new = pitch_t + pitch_dot_t * dt + 0.5 * pitch_ddot * dt ** 2
+            pitch_dot_new = pitch_dot_t + pitch_ddot
+            #: Calculate the power output
+            power_t = T_g * generator_efficiency * omega_t  # Power output in Watts
+            #: Save the new state variables
+            omega.append(omega_new)
+            omega_gen.append(omega_gen_new)
+            theta.append(theta_new)
+            pitch.append(pitch_new)
+            pitch_dot.append(pitch_dot_new)
+            # Save the tip speed ratio and power output
+            tsr.append(tsr_t)
+            power.append(power_t)
         case _:
-            raise ValueError(f"Unsupported power mode '{power_mode}'")
-    #: Calculate the aerodynamic torque
-    Cp_t = Cp_interp(*args)
-    T_a = 1 / (2 * omega_t) * air_density * np.pi * (rotor_radius ** 2) * Cp_t * (u_t ** 3)
-    #: Calculate the generator torque
-    match controller_mode:
-        case 'K_omega_squared':
-            T_g = K * (omega_t ** 2)
-        case 'K_omega_cubed':
-            T_g = K * (omega_t ** 3)
-        case 'greedy_lio':
-            if u_t < u_rated:
-                T_g = K_P_gen * (omega_t - (tsr_opt * u_t) / rotor_radius)
-            else:
-                T_g = rated_gen_tor_torque
-        case _:
-            raise ValueError(f"Unsupported controller mode '{controller_mode}'")
-    #: Calculate the rotor acceleration
-    omega_dot = (T_a - gearbox_ratio * T_g) / inertia
-    #: Calculate the power output
-    # FIXME: Does the generator efficiency need to be included here?
-    power_t = T_g * generator_efficiency * omega_t  # Power output in Watts
-    #: Calculate the new rotor speed
-    omega_new = omega_t + omega_dot * dt
-    #: Save the new rotor speed
-    omega.append(omega_new)
-    pitch.append(pitch_t)
-    tsr.append(tsr_t)
-    power.append(power_t)
+            raise ValueError(f"Unsupported dynamics model '{dynamics_model}'")
     #: Update the time
     t += dt
 
@@ -178,6 +266,8 @@ match power_mode:
         print(f"Cp_opt: (from file): {Cp_opt:.3f}, Cp_opt (from wind speed): {Cp_interp(u_rated):.3f}")
     case 'lookup_table':
         print(f"Cp_opt: (from file): {Cp_opt:.3f}, Cp_opt (from lookup table, tsr_opt): {Cp_interp(tsr_opt, 0):.3f}, Cp_opt (from lookup table, tsr_calc): {Cp_interp((omega_rated * rotor_radius) / u_rated, 0):.3f}")
+    case 'closed_form':
+        pass
     case _:
         raise ValueError(f"Unsupported power mode '{power_mode}'")
 
