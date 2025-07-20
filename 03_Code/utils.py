@@ -2,6 +2,8 @@
 
 """
 
+import numpy as np
+
 # ------------ DATA ------------
 
 # Tableau colors
@@ -23,6 +25,12 @@ def convert(value: float, from_unit: str, to_unit: str) -> float:
     """Convert a value from one unit to another."""
     match (from_unit, to_unit):
         case ('RPM', 'rad/s'):
-            return value * (2 * np.pi / 60)
+            return value * ((2 * np.pi) / 60)
+        case ('rad/s', 'RPM'):
+            return value * (60 / (2 * np.pi))
+        case ('deg', 'rad'):
+            return value * ((2 * np.pi) / 360)
+        case ('rad', 'deg'):
+            return value * (360 / (2 * np.pi))
         case _:
             raise ValueError(f"Unsupported conversion from '{from_unit}' to '{to_unit}'")

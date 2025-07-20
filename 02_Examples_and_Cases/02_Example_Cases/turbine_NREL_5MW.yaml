@@ -2,13 +2,16 @@
     name: NREL 5MW Reference Wind Turbine
     performance:
       rated_power: 5000000
+      rated_rot_speed: 12.1  # in RPM
       rated_wind_speed: 11.4
       cutin_wind_speed: 3.0
       cutout_wind_speed: 25.0
+      tsr_opt: 7.55
+      Cp_opt: 0.482
       Cp_curve:
-        Cp_tb_values: [ ]
-        Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
-        Cp_tb_bpa: [ ]          # in deg
+        # Cp_tb_values: [ ]
+        # Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
+        # Cp_tb_bpa: [ ]          # in deg
         Cp_u_values:
           - 0.0
           - 0.0
@@ -233,8 +236,44 @@
           - 25.
           - 25.1
           - 50.
+    # FIXME: This should actually be a controller (as in, a controller in the yaml file), but for the time being, it's just tabulated values
+    pitch:
+      pitch_curve:
+        pitch_u_values:
+          - 0.00
+          - 3.83
+          - 6.60
+          - 8.70
+          - 10.45
+          - 12.06
+          - 13.54
+          - 14.92
+          - 16.23
+          - 17.47
+          - 18.70
+          - 19.94
+          - 21.18
+          - 22.35
+          - 23.47
+        pitch_u_wind_speeds:
+          - 11.4
+          - 12.0
+          - 13.0
+          - 14.0
+          - 15.0
+          - 16.0
+          - 17.0
+          - 18.0
+          - 19.0
+          - 20.0
+          - 21.0
+          - 22.0
+          - 23.0
+          - 24.0
+          - 25.0
     generator_efficiency: 0.944
     hub_height: 90
+    hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2
     pP: 1.88  # FIXME: These are from the IEA 10MW turbine
     pT: 1.88  # FIXME: These are from the IEA 10MW turbine
     rotor_diameter: 126

@@ -10,6 +10,40 @@ performance:
   tsr_opt: 7.55
   Cp_opt: 0.482
   rated_gen_tor_torque: 43_093.55  # in Nm
+  pitch:
+    pitch_curve:
+      pitch_u_values:
+        - 0.00
+        - 3.83
+        - 6.60
+        - 8.70
+        - 10.45
+        - 12.06
+        - 13.54
+        - 14.92
+        - 16.23
+        - 17.47
+        - 18.70
+        - 19.94
+        - 21.18
+        - 22.35
+        - 23.47
+      pitch_u_wind_speeds:
+        - 11.4
+        - 12.0
+        - 13.0
+        - 14.0
+        - 15.0
+        - 16.0
+        - 17.0
+        - 18.0
+        - 19.0
+        - 20.0
+        - 21.0
+        - 22.0
+        - 23.0
+        - 24.0
+        - 25.0
 generator_efficiency: 0.944
 gearbox_ratio: 97  # 97:1
 hub_height: 90

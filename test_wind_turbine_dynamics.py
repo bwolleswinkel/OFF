@@ -6,14 +6,20 @@
 
 # TODO: Include the WT models from "Zero-Dynamics Attack on Wind Turbines and Countermeasures Using Generalized Hold and Generalized Sampler"
 # TODO: Include the WT models from "Self-learning-based secure control of wind power generation systems under cyber threat: Ensuring prescribed performance"
+# TODO: Include the displacement model from "Wind farm inertia forecasting accounting for wake losses, control strategies, and operational constraints"
 
 """
 
 import yaml
+import warnings
+import sys, os
 
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+
+sys.path.append('03_Code')
+from utils import convert
 
 # ------ PARAMETERS ------
 
@@ -34,38 +40,23 @@ controller_mode = 'K_omega_squared'  # 'K_omega_squared' | 'K_omega_cubed' | 'gr
 
 # Set the local wind speed 
 # u_sim = [[0, 50, 50.1,], [11, 11, 4.0]]  # NOTE: The first list is time points, the second list is wind speeds (in m/s) at those time points
-u_sim = [[0,], [7.0]]
+u_sim = [[0, 600], [8.0, 12.0]]
 
 # Set the blade pitch
 pitch_sim = [[0], [1]]  # NOTE: The first list is time points, the second list is pitch angles (in deg) at those time points
+pitch_mode = 'lookup_table'  # 'zero' | 'lookup_table' | 'lookup_table_rotor_speed' | 'lookup_table_exponential' | 'reference'
 
 # Set the initial rotor speed
-omega_0 = 8  # RPM
+omega_0 = 9.0  # RPM
 
 # Set the simulation parameters
 dt = 0.2  # s
-T_sim = 100.0  # s
+T_sim = 1200.0  # s
 
 # ------ SCRIPT ------
 
 # Set the controller gains
-K_P_gen = 1E6
-
-
-def convert(value: float, from_unit: str, to_unit: str) -> float:
-    """Convert a value from one unit to another."""
-    match (from_unit, to_unit):
-        case ('RPM', 'rad/s'):
-            return value * ((2 * np.pi) / 60)
-        case ('rad/s', 'RPM'):
-            return 1 / convert(value, 'RPM', 'rad/s') if value != 0 else 0
-        case ('deg', 'rad'):
-            return value * ((2 * np.pi) / 360)
-        case ('rad', 'deg'):
-            return 1 / convert(value, 'deg', 'rad') if value != 0 else 0
-        case _:
-            raise ValueError(f"Unsupported conversion from '{from_unit}' to '{to_unit}'")
-        
+K_P_gen = 1E12
 
 # Load the data based on the model
 match wt_model:
@@ -88,6 +79,7 @@ match wt_model:
         rated_power = input_file['performance']['rated_power']
         omega_rated = convert(input_file['performance']['rated_rot_speed'], 'RPM', 'rad/s')
         rated_gen_tor_torque = input_file['performance']['rated_gen_tor_torque'] 
+        blade_pitch, blade_pitch_u = input_file['performance']['pitch']['pitch_curve']['pitch_u_values'], input_file['performance']['pitch']['pitch_curve']['pitch_u_wind_speeds']
         # FIXME: This value is from "On the Analysis and Synthesis of Wind Turbine Side–Side Tower Load Control via Demodulation", Pamososuryo et al. (2024), but I don't know if it is correct
         inertia = 4.0802E7  # kg*m^2
     case 'cart_1_5MW':
@@ -162,7 +154,29 @@ while t < T_sim:
     match dynamics_model:
         case 'pamososuryo_drive_train_2025':
             #: Extract the current rotor speed
-            omega_t, u_t, pitch_t = omega[-1], u_interp(t), pitch_ref_interp(t)
+            omega_t, u_t = omega[-1], u_interp(t)
+            #: Extract the current pitch angle
+            match pitch_mode:
+                case 'zero':
+                    pitch_t = 0
+                case 'lookup_table':
+                    pitch_t = np.interp(u_t, blade_pitch_u, blade_pitch)
+                case 'lookup_table_rotor_speed':
+                    # FIXME: This 'works', but gives very irregular 'chattering' behavior
+                    if omega_t > omega_rated:
+                        pitch_t = np.interp(u_t, blade_pitch_u, blade_pitch)
+                    else:
+                        pitch_t = 0
+                case 'lookup_table_exponential':
+                    #: Calculate the steady-state pitch
+                    pitch_ss = np.interp(u_t, blade_pitch_u, blade_pitch)
+                    #: Check the difference in rotor speed and steady-state rotor speed
+                    delta_omega = omega_t - omega_rated
+                    #: Calculate the proportional pitch angle
+                    pitch_t = np.exp(1E1 * delta_omega) * pitch_ss
+                case 'reference':
+                    pitch_t = pitch_ref_interp(t)
+            pitch_t = convert(pitch_t, 'deg', 'rad')  # Convert pitch
             #: Calculate the tip speed ratio
             tsr_t = (omega_t * rotor_radius) / u_t if u_t > 0 else 0
             #: Set the arguments for the Cp interpolation
@@ -170,11 +184,15 @@ while t < T_sim:
                 case 'wind_speed':
                     args = (u_t,)
                 case 'lookup_table':
-                    args = (tsr_t, convert(pitch_t, 'deg', 'rad'))
+                    args = (tsr_t, convert(pitch_t, 'rad', 'deg'))
                 case _:
                     raise ValueError(f"Unsupported power mode '{power_mode}'")
             #: Calculate the aerodynamic torque
             Cp_t = Cp_interp(*args)
+            # FIXME: Sometimes this can be np.nan, which is problematic...
+            if np.isnan(Cp_t):
+                warnings.warn(f"Cp value is NaN at time {t:.2f} s, using 0 instead")
+                Cp_t = 0
             T_a = 1 / (2 * omega_t) * air_density * np.pi * (rotor_radius ** 2) * Cp_t * (u_t ** 3)
             #: Calculate the generator torque
             match controller_mode:
@@ -183,10 +201,18 @@ while t < T_sim:
                 case 'K_omega_cubed':
                     T_g = K * (omega_t ** 3)
                 case 'greedy_lio':
+                    #: Calculate the rotor setpoint
                     if u_t < u_rated:
-                        T_g = K_P_gen * (omega_t - (tsr_opt * u_t) / rotor_radius)
+                        omega_setpoint = (tsr_opt * u_t) / rotor_radius
+                    else:
+                        omega_setpoint = omega_rated
+                    #: Calculate the generator torque
+                    if u_t < u_rated:
+                        T_g = K_P_gen * (omega_t - omega_setpoint)
                     else:
                         T_g = rated_gen_tor_torque
+                    # FIXME: Cap the generator torque to be positive
+                    T_g = np.max([T_g, 0])
                 case _:
                     raise ValueError(f"Unsupported controller mode '{controller_mode}'")
             #: Calculate the rotor acceleration
@@ -241,6 +267,8 @@ while t < T_sim:
             pitch_dot_new = pitch_dot_t + pitch_ddot
             #: Calculate the power output
             power_t = T_g * generator_efficiency * omega_t  # Power output in Watts
+            if np.isnan(power_t):
+                warnings.warn(f"Power output is NaN at time {t:.2f} s, Cp value is {Cp_t:.3f}")
             #: Save the new state variables
             omega.append(omega_new)
             omega_gen.append(omega_gen_new)
@@ -286,7 +314,7 @@ else:
 
 # Plot the local wind speed
 fig_u, ax_u = plt.subplots()
-t_range = np.linspace(0, T_sim, 100)  # Time range for plotting
+t_range = np.arange(0, T_sim + dt, dt)  # Time range for plotting
 ax_u.plot(t_range, u_interp(t_range), label=r"$u(t)$")
 ax_u.set_xlabel(r"Time $t$ (in s)")
 ax_u.set_ylabel(r"Wind Speed $u$ (in m/s)")
@@ -294,21 +322,22 @@ ax_u.legend(loc='upper right')
 
 # Plot the rotor speed
 fig_omega, ax_omega = plt.subplots()
-ax_omega.plot(np.arange(0, len(omega)) * dt, [convert(o, 'rad/s', 'RPM') for o in omega], label=r"$\omega(t)$")
+ax_omega.plot(t_range, [convert(o, 'rad/s', 'RPM') for o in omega], label=r"$\omega(t)$")
 ax_omega.set_xlabel(r"Time $t$ (in s)")
 ax_omega.set_ylabel(r"Rotor Speed $\omega$ (in RPM)")
 ax_omega.legend(loc='upper right')  
 
 # Plot the path of (pitch, tsr)
 fig_pitch_tsr, ax_pitch_tsr = plt.subplots()
-ax_pitch_tsr.plot(pitch, tsr, label=r"$(\beta(t), \lambda(t))$")
+ax_pitch_tsr.imshow(np.flipud(Cp), cmap='inferno', extent=(pitch_range[0], pitch_range[1], tsr_range[0], tsr_range[1]), aspect='auto', origin='lower')
+ax_pitch_tsr.plot([convert(elem, 'rad', 'deg') for elem in pitch], tsr, label=r"$(\beta(t), \lambda(t))$")
 ax_pitch_tsr.set_xlabel(r"Blade Pitch $\beta$ (in °)")
 ax_pitch_tsr.set_ylabel(r"Tip Speed Ratio $\lambda$ (in -)")
 ax_pitch_tsr.legend(loc='upper right')   
 
 # Plot the power output
 fig_power, ax_power = plt.subplots()
-ax_power.plot(np.arange(0, len(power)) * dt, [o * 1E-6 for o in power], label=r"$P(t)$")
+ax_power.plot(t_range[:-1], [o * 1E-6 for o in power], label=r"$P(t)$")
 ax_power.set_xlabel(r"Time $t$ (in s)")
 ax_power.set_ylabel(r"Power Output $P$ (in MW)")
 ax_power.legend(loc='upper right')

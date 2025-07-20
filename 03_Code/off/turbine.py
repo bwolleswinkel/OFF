@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program (see COPYING file).  If not, see <https://www.gnu.org/licenses/>.
 
+import warnings
+
 import numpy as np
 from abc import ABC, abstractmethod
 from off.observation_points import ObservationPoints
@@ -24,6 +26,13 @@ from off.states import States
 import off.utils as ot
 import logging
 lg = logging.getLogger(__name__)
+
+# ====== BART ======
+import sys, os
+# Add the parent directory to the system path to import utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import convert
+# ====== BART ======
 
 
 class TurbineStates(States, ABC):
@@ -501,6 +510,124 @@ class HAWT_ADM(Turbine):
                             "instead." % self.power_calc_method)
 
         return p
+    
+
+# ====== BART ======
+
+class TurbineSimpleDriveTrain(HAWT_ADM):
+    """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia.
+    
+    """
+
+    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt):
+        super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data)
+        #: Add the dynamic states
+        # FIXME: These need to be able to be passed to the turbine
+        # FIXME: We need to check that all these arguments are here before running this code
+        self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
+        self.pitch = 0
+        self.turbine_data = turbine_data
+        self.rotor_radius = self.diameter / 2
+        self.inertia = turbine_data['hub_inertia_low_speed_shaft']
+        self.generator_efficiency = turbine_data['generator_efficiency']
+        self.power_calc_method = 'simple_drive_train'
+        self.gen_torque_controller_mode = 'K_omega_squared'  # TODO: Set later in input
+        self.dt = dt  # Time step for the dynamics (in seconds)
+        #: Calculate the optimal gain K
+        # self.K = 1 / (2 * (((turbine_data['performance']['rated_rot_speed'] * self.rotor_radius) / turbine_data['performance']['rated_wind_speed']) ** 3)) * 1.225 * np.pi * (self.rotor_radius ** 5) * turbine_data['performance']['Cp_opt']
+        # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
+        self.K = 2680752.3292693296
+
+    def calc_power(self, wind_speed, air_den=1.225):
+        """Calculate the power based on turbine, ambient and OP states, and the current turbine dynamics
+
+        Parameters
+        ----------
+        wind_speed : float
+            Wind speed (in m/s)
+        air_den : float
+            air density (in kg/m^3)
+
+        Returns
+        -------
+        float :
+            Power generated (in W)
+        
+        """
+
+        #: Extract the Cp curve
+        if "Cp_tb_values" in self.turbine_data["performance"]["Cp_curve"]:
+            raise NotImplementedError("Cp calculation based on Cp lookup table not implemented yet")
+        else:
+            #: Give a warning that blade dynamics are not taken into account
+            try: 
+                if not self.warn_raised:
+                    warnings.warn(f"No Cp lookup table provided for the turbine. Using a linear interpolation of the Cp curve based on wind speed.", UserWarning, stacklevel=4)
+                    self.warn_raised = True
+            except AttributeError:
+                self.warn_raised = False
+            #: Create an interpolation of the Cp curve based on the wind speed
+            Cp_power_mode = 'wind_speed'
+            Cp_interp = lambda ws: np.interp(ws, self.Cp_u_wind_speeds, self.Cp_u_values)
+
+        if self.yaw_power_coeff == "pP":
+            yaw = np.deg2rad(self.turbine_states.get_current_yaw())
+            yaw_coef = np.cos(yaw) ** self.Cp_pP
+        elif self.yaw_power_coeff == "none":
+            yaw_coef = 1.0
+        else:
+            raise Exception("Only cos(yaw) ** pP yaw coefficient supported (or none)")
+        
+        if self.power_calc_method == "axial induction":
+            axi = self.turbine_states.get_current_ax_ind()
+            cp = 4 * axi * (1 - axi) ** 2
+            power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+        elif self.power_calc_method == "cp-u lut":
+            cp = np.interp(wind_speed, self.Cp_u_wind_speeds, self.Cp_u_values)
+            power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+        elif self.power_calc_method == "cp-bpa-tsr":
+            cp = 0
+            power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+            raise Exception("Cp calculation based on cp-bpa-tsr not implemented yet.")
+        elif self.power_calc_method == 'simple_drive_train':
+            #: Calculate the tip speed ratio
+            tsr_t = (self.omega * self.rotor_radius) / wind_speed if wind_speed > 0 else 0
+            #: Calculate the Cp coefficient
+            match Cp_power_mode:
+                case 'wind_speed':
+                    args = (wind_speed,)
+                case 'lookup_table':
+                    args = (tsr_t, self.pitch)
+                case _:
+                    raise ValueError(f"Unsupported Cp power mode '{Cp_power_mode}'")
+            Cp_t = Cp_interp(*args)
+            #: Calculate the aerodynamic torque
+            # FIXME: This results in error if the rotor speed is zero
+            if np.isclose(self.omega, 0):
+                warnings.warn("Rotor speed is zero, setting aerodynamic torque to 1E4 Nm to avoid division by zero", RuntimeWarning, stacklevel=4)
+                T_a = 1E4
+            else:
+                T_a = 1 / (2 * self.omega) * air_den * np.pi * (self.rotor_radius ** 2) * Cp_t * (wind_speed ** 3)
+            #: Calculate the generator torque
+            # FIXME: For now, the controller mode is hardcoded here, but it should be passed as an argument
+            match self.gen_torque_controller_mode:
+                case 'K_omega_squared':
+                    T_g = self.K * (self.omega ** 2)
+                case _:
+                    raise ValueError(f"Unsupported controller mode '{self.gen_torque_controller_mode}'")
+            #: Calculate the rotor acceleration
+            omega_dot_t = (T_a - T_g) / self.inertia
+            #: Calculate the power output
+            power = T_g * self.generator_efficiency * self.omega  # Power output in Watts
+            #: Calculate the new rotor speed
+            self.omega = self.omega + omega_dot_t * self.dt
+        else:
+            raise Exception("The power calculation method %s is unkown. Try cp-u lut, cp-bpa-tsr, axial induction "
+                            "instead." % self.power_calc_method)
+
+        return power
+    
+# ====== BART ======
 
 
 class TurbineStatesFLORIDyn(TurbineStates):

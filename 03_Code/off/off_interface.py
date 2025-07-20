@@ -85,6 +85,13 @@ class OFFInterface:
         settings_sim['path_to_yaml'] = path_to_yaml
         wind_farm = self._run_yaml_to_wind_farm(sim_info)
 
+        # ====== BART ======
+        
+        # FIXME: Move this to the `_run_yaml_to_dict` method
+        settings_turbine = sim_info['turbine']
+
+        # ====== BART ======
+
         # Generate an input file for FLORIS
         tmp_yaml_path = self._gen_FLORIS_yaml(settings_wke,
                                               sim_info["wind_farm"],
@@ -96,7 +103,7 @@ class OFFInterface:
         vis = sim_info["vis"]
 
         # Create OFF simulation object
-        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, vis)
+        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, settings_turbine, vis)
 
         # TODO init based on sim_info inputs & used ambient state model / turbine state model
         self.off_sim.init_sim(
@@ -290,17 +297,28 @@ class OFFInterface:
             else:
                 dist_factor = 1
 
-            turbines.append(tur.HAWT_ADM(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor,
-                                                   sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor,
-                                                   sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]),
-                                         np.array(
-                                             [sim_info["ambient"]["flow_field"]["wind_directions"][0],  # orientation
-                                              sim_info["turbine"][t]["shaft_tilt"]]),  # tilt
-                                         tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]),
-                                         # Turb. states
-                                         ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]),  # OP model
-                                         amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]),  # Ambient model
-                                         sim_info["turbine"][t]))  # Turbine data
+            # ====== BART ======
+
+            if 'dynamics' in sim_info['turbine']:
+                match sim_info['turbine']['dynamics']['model']:
+                    case 'simple_drive_train':
+                        turbines.append(tur.TurbineSimpleDriveTrain(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]), np.array([sim_info["ambient"]["flow_field"]["wind_directions"][0], sim_info["turbine"][t]["shaft_tilt"]]), tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]), ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]), amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]), sim_info["turbine"][t], sim_info['sim']['sim']['time step']))
+                    case _:
+                        raise ValueError(f"Unknown dynamics model '{sim_info['turbine']['dynamics']['model']}' for {t} turbine")
+            else:
+                turbines.append(tur.HAWT_ADM(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor,
+                                                    sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor,
+                                                    sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]),
+                                            np.array(
+                                                [sim_info["ambient"]["flow_field"]["wind_directions"][0],  # orientation
+                                                sim_info["turbine"][t]["shaft_tilt"]]),  # tilt
+                                            tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]),
+                                            # Turb. states
+                                            ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]),  # OP model
+                                            amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]),  # Ambient model
+                                            sim_info["turbine"][t]))  # Turbine data
+            
+            # ====== BART ======
 
         wind_farm = wfm.WindFarm(turbines)
         return wind_farm

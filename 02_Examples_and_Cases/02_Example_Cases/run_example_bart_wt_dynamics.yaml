@@ -42,9 +42,9 @@ sim:
   description: Test simulation with 1200s runtime, features a wind direction change from 225 to 235 deg
 
   sim:
-    time step: 4.0
+    time step: 0.2
     time start: 0.0
-    time end: 1200.0
+    time end: 100.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
@@ -144,12 +144,10 @@ ambient:
       - 225.0
       - 225.0
       - 235.0
-      - 235.0
     wind_directions_t:
       - 0.0
-      - 600.0
-      - 900.0
-      - 1200.0
+      - 50.0
+      - 60.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
       - 8.0
@@ -262,12 +260,10 @@ controller:
      - [225, 225, 225, 225, 225, 225, 225, 225, 225]
      - [225, 225, 225, 225, 225, 225, 225, 225, 225]
      - [235, 235, 235, 235, 235, 235, 235, 235, 235]
-     - [235, 235, 235, 235, 235, 235, 235, 235, 235]
    orientation_t:          # in s
      - 0.0
-     - 600.0
-     - 900.0
-     - 90000.0
+     - 40.0
+     - 60.0
 
 
 # Turbine information
@@ -284,9 +280,9 @@ turbine:
       cutin_wind_speed: 3.0
       cutout_wind_speed: 25.0
       Cp_curve:
-        Cp_tb_values: [ ]
-        Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
-        Cp_tb_bpa: [ ]          # in deg
+        # Cp_tb_values: [ ]
+        # Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
+        # Cp_tb_bpa: [ ]          # in deg
         Cp_u_values:
           - 0.0
           - 0.0
@@ -398,9 +394,9 @@ turbine:
           - 25.1
           - 50.
       Ct_curve:
-        Ct_tb_values: [ ]
-        Ct_tb_tsr: [ ]
-        Ct_tb_bpa: [ ]
+        # Ct_tb_values: [ ]
+        # Ct_tb_tsr: [ ]
+        # Ct_tb_bpa: [ ]
         Ct_u_values:
           - 0.0
           - 0.0
@@ -511,8 +507,44 @@ turbine:
           - 25.
           - 25.1
           - 50.
+    # FIXME: This should actually be a controller (as in, a controller in the yaml file), but for the time being, it's just tabulated values
+    pitch:
+      pitch_curve:
+        pitch_u_values:
+          - 0.00
+          - 3.83
+          - 6.60
+          - 8.70
+          - 10.45
+          - 12.06
+          - 13.54
+          - 14.92
+          - 16.23
+          - 17.47
+          - 18.70
+          - 19.94
+          - 21.18
+          - 22.35
+          - 23.47
+        pitch_u_wind_speeds:
+          - 11.4
+          - 12.0
+          - 13.0
+          - 14.0
+          - 15.0
+          - 16.0
+          - 17.0
+          - 18.0
+          - 19.0
+          - 20.0
+          - 21.0
+          - 22.0
+          - 23.0
+          - 24.0
+          - 25.0
     generator_efficiency: 0.944
     hub_height: 90
+    hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2
     pP: 1.88  # FIXME: These are from the IEA 10MW turbine
     pT: 1.88  # FIXME: These are from the IEA 10MW turbine
     rotor_diameter: 126

@@ -47,7 +47,7 @@ class OFF:
     settings_vis = dict()
 
     def __init__(self, wind_farm: wfm.WindFarm, settings_sim: dict, settings_wke: dict, settings_sol: dict,
-                 settings_cor: dict, settings_ctr: dict, vis: dict):
+                 settings_cor: dict, settings_ctr: dict, settings_turbine: dict, vis: dict):
         self.wind_farm = wind_farm
         self.settings_sim = settings_sim
         self.settings_vis = vis
@@ -63,6 +63,16 @@ class OFF:
         # self.wake_solver = ws.FLORIDynTWFWakeSolver(settings_wke, settings_sol)
         # self.wake_solver = ws.FLORIDynFlorisWakeSolver(settings_wke, settings_sol)
         self.wake_solver = ws.TWFSolver(settings_wke, settings_sol, vis)
+
+        # ====== BART ======
+
+        # ====== WIND TURBINE DYNAMICS ======
+        try:
+            self.wt_dynamics_model = settings_turbine['dynamics']['model']
+        except KeyError:
+            pass
+
+        # ====== BART ======
 
         # =========== Controller ===========
         if settings_ctr["ctl"] == "IdealGreedyBaseline":

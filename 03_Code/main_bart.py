@@ -257,7 +257,10 @@ def main():
         ax_power.set_xlabel(r"Time $t$ (in s)")
         # FIXME: To remove this weird scaling, does NOT work!!
         ax_power.ticklabel_format(style='plain', useOffset=False)
-        ax_power.set_ylim([0.9 * min([np.min(power_idx) for power_idx in power]), 1.1 * max([np.max(power_idx) for power_idx in power])])
+        try:
+            ax_power.set_ylim([0.9 * min([np.min(power_idx) for power_idx in power]), 1.1 * max([np.max(power_idx) for power_idx in power])])
+        except ValueError:
+            pass
         fig_power.suptitle("Power of turbines")
 
     # Plot the total 
