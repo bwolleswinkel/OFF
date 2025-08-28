@@ -250,31 +250,31 @@ class OFF:
 
             # ///////////////////// PREDICT ///////////////////////
             # Get wind speeds at the rotor plane and to propagate the OPs
-            for idx, tur in enumerate(self.wind_farm.turbines):
+            for turb_idx, tur in enumerate(self.wind_farm.turbines):
                 # Debug flags
                 if (self.settings_vis["debug"]["effective_wf_layout"] and
                         t in self.settings_vis["debug"]["time"] and
-                        idx in self.settings_vis["debug"]["iT"]):
+                        turb_idx in self.settings_vis["debug"]["iT"]):
                     # Plots the wind farm as simulated in the steady state model
                     self.wake_solver.raise_flag_plot_wakes(t)
 
                 if (self.settings_vis["debug"]["effective_wf_tile"] and
                         t in self.settings_vis["debug"]["time"]):
                     # Set flag to calculate wind speed in wake model at grid points belonging to turbine iT
-                    grid_points_iT = self.visualizer_ff.vis_get_grid_points_iT(idx)
+                    grid_points_iT = self.visualizer_ff.vis_get_grid_points_iT(turb_idx)
                     self.wake_solver.raise_flag_plot_tile(
                         grid_points_iT[:,0], grid_points_iT[:,1],
                         np.array(self.settings_vis["grid"]["slice_2d_xy"]))
 
                 # for turbine 'tur': Run wake solver and retrieve measurements from the wake model
-                uv_r[idx, :], uv_op, m_tmp = self.wake_solver.get_measurements(idx, self.wind_farm)
+                uv_r[turb_idx, :], uv_op, m_tmp = self.wake_solver.get_measurements(turb_idx, self.wind_farm)
 
                 # Calculate the power generated
-                pow_t[idx, :] = tur.calc_power(util.ot_uv2abs(uv_r[idx, 0], uv_r[idx, 1]))
-                m_tmp['power_OFF'] = pow_t[idx, :]
+                pow_t[turb_idx, :] = tur.calc_power(util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]))
+                m_tmp['power_OFF'] = pow_t[turb_idx, :]
 
                 # Add turbine index & timestamp to data
-                m_tmp.t_idx = idx
+                m_tmp.t_idx = turb_idx
                 m_tmp['time'] = t
 
                 # Append turbine measurements to general measurement data
@@ -284,14 +284,14 @@ class OFF:
                 tur.observation_points.set_op_propagation_speed(uv_op)
 
                 # Store turbine state applied in controller
-                c_tmp = self.controller.get_applied_settings(tur, idx, t)
+                c_tmp = self.controller.get_applied_settings(tur, turb_idx, t)
                 control_applied = pd.concat([control_applied, c_tmp], ignore_index=True)
 
                 # Store flow field points
                 if (self.settings_vis["debug"]["effective_wf_tile"] and
                         t in self.settings_vis["debug"]["time"]):
                     self.visualizer_ff.vis_store_u_values(
-                        self.wake_solver.get_tile_u().flatten(), idx)
+                        self.wake_solver.get_tile_u().flatten(), turb_idx)
                     
 
             lg.info('Rotor wind speed of all turbines:')
@@ -302,25 +302,70 @@ class OFF:
             # ///////////////////// CORRECT ///////////////////////
             # Load new values for the flow field
             self.ambient_corrector.update(t)
-            for idx, tur in enumerate(self.wind_farm.turbines):
+            for turb_idx, tur in enumerate(self.wind_farm.turbines):
                 # Apply new values to the turbine states
-                self.ambient_corrector(idx, tur.ambient_states)
+                self.ambient_corrector(turb_idx, tur.ambient_states)
 
             # ///////////////////// VISUALIZE /////////////////////
             if (self.settings_vis["debug"]["turbine_effective_wind_speed"] and
                     t in self.settings_vis["debug"]["time"]):
-                # TEMP
-                #
-                print(f"self.wind_farm: {self.wind_farm}")
-                print(f"self.wind_farm.turbines: {self.wind_farm.turbines}")
-                print(f"len(self.wind_farm.turbines): {len(self.wind_farm.turbines)}")
-                print(f"self.sim_dir: {self.sim_dir}")
-                print(f"t: {t}")
-                #
                 self.wake_solver.vis_turbine_eff_wind_speed_field(self.wind_farm, self.sim_dir, t)
 
+            # ====== BART ======
+            if (self.settings_vis["debug"]["rotor_plane_wind_speed"] and
+                    t in self.settings_vis["debug"]["time"]):
+                # FIXME: These are mostly proof of concepts
+                print(f"Plotting rotor plane wind speed at t = {t}")
+                for turb_idx, tur in enumerate(self.wind_farm.turbines):
+                    turb_center_pos = self.wind_farm.get_layout()[turb_idx, :3]
+                    print(f"Turbine {turb_idx} position: {turb_center_pos}")
+                    tur_yaw_angle = tur.get_yaw_orientation()
+                    print(f"Turbine yaw angle: {tur_yaw_angle}")
+                    print(f"Turbine rotor diameter: {tur.diameter}")
+                    print(f"Effective wind speed at center: {self.wake_solver.floris_wake.vis_tile(np.atleast_1d(turb_center_pos[0]), np.atleast_1d(turb_center_pos[1]), np.atleast_1d(turb_center_pos[2]))}")
+                    # Create a meshgrid without rotation
+                    N_sample_points_width = 100
+                    N_sample_points_height = 150
+                    x = np.linspace(turb_center_pos[0] - tur.diameter/2, turb_center_pos[0] + tur.diameter/2, N_sample_points_width)
+                    y = np.array(turb_center_pos[1])
+                    z = np.linspace(turb_center_pos[2] - tur.diameter/2, turb_center_pos[2] + tur.diameter/2, N_sample_points_height)
+                    X, Y, Z = np.meshgrid(x, y, z, indexing='xy')
+                    # TEMP: We do some 'transposition' to make it easier to interpret these finding 
+                    X, Y, Z = X[0, :, :], Y[0, :, :], Z[0, :, :]
+                    X, Y, Z = X.T, Y.T, Z.T
+                    X, Y, Z = np.flipud(X), np.flipud(Y), np.flipud(Z)
+                    print(f"X- values: {X.shape}")
+                    print(X)
+                    print(f"Y- values: {Y.shape}")
+                    print(Y)
+                    print(f"Z- values: {Z.shape}")
+                    print(Z)
+                    # Now we ROTATE all the values in the array
+                    tur_yaw_angle = tur_yaw_angle * ((2 * np.pi) / 360)
+                    Rot_around_z_axis = np.array([[np.cos(tur_yaw_angle), np.sin(tur_yaw_angle), 0],
+                                                  [-np.sin(tur_yaw_angle), np.cos(tur_yaw_angle), 0],
+                                                  [0, 0, 1]])
+                    for flow_idx, _ in np.ndenumerate(X):
+                        pos_vec = np.array([X[flow_idx], Y[flow_idx], Z[flow_idx]])
+                        pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
+                        X[flow_idx], Y[flow_idx], Z[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
+                    # Pass them to the flow visualizer
+                    vels = self.wake_solver.floris_wake.vis_tile(X.flatten(order='F'), Y.flatten(order='F'), Z.flatten(order='F'))
+                    vels = np.reshape(vels, (N_sample_points_height, N_sample_points_width), order='F')
+                    print(f"Velocities: {vels}")
+                    # TEMP: Plot this flow field
+                    import matplotlib.pyplot as plt
+                    plt.imshow(vels, cmap='inferno')
+                    plt.colorbar()
+                    plt.title(f"Rotor Plane Wind Speed at t = {t}, turbine idx = {turb_idx}")
+                    plt.xlabel("X Position")
+                    plt.ylabel("Z Position")
+                    plt.show()
+
+            # ====== BART ======
+
             # ///////////////////// PROPAGATE /////////////////////
-            for idx, tur in enumerate(self.wind_farm.turbines):
+            for turb_idx, tur in enumerate(self.wind_farm.turbines):
                 tur.ambient_states.iterate_states_and_keep()
                 tur.turbine_states.iterate_states_and_keep()
                 tur.observation_points.propagate_ops(self.settings_sim['time step'])
@@ -328,12 +373,12 @@ class OFF:
 
             # ///////////////////// CONTROL ///////////////////////
             self.controller.update(t)
-            for idx, tur in enumerate(self.wind_farm.turbines):
+            for turb_idx, tur in enumerate(self.wind_farm.turbines):
                 lg.debug("Turbine %s states before control-> yaw = %s deg, ax ind = %s." %
-                         (idx, tur.turbine_states.get_current_yaw(), tur.turbine_states.get_current_ax_ind()))
-                self.controller(tur, idx, t)
+                         (turb_idx, tur.turbine_states.get_current_yaw(), tur.turbine_states.get_current_ax_ind()))
+                self.controller(tur, turb_idx, t)
                 lg.debug("Turbine %s states after control-> yaw = %s deg, ax ind = %s." %
-                         (idx, tur.turbine_states.get_current_yaw(), tur.turbine_states.get_current_ax_ind()))
+                         (turb_idx, tur.turbine_states.get_current_yaw(), tur.turbine_states.get_current_ax_ind()))
 
             # ///////////////////// STORE ///////////////////////
             if (self.settings_vis["debug"]["effective_wf_tile"] and

@@ -49,7 +49,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_bart_wt_dynamics'
+    input_file_name = 'run_example_3T_with_vis'  # NOTE: Without .yaml
 
     # ====== BART ======
 
