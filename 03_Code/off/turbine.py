@@ -17,6 +17,9 @@
 # along with this program (see COPYING file).  If not, see <https://www.gnu.org/licenses/>.
 
 import warnings
+# ====== BART ======
+from typing import Callable
+# ====== BART ======
 
 import numpy as np
 from abc import ABC, abstractmethod
@@ -522,6 +525,11 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         #: Add the dynamic states
         # FIXME: These need to be able to be passed to the turbine
         # FIXME: We need to check that all these arguments are here before running this code
+        self.azimuth = 0  # In rad
+        # FIXME: Right now, these are placeholder values and implemention
+        self.drag_coeff: float = 0.5
+        self.blade_chord: Callable = lambda r: 3.0 - 0.02 * r  # In m, as a function of radius
+        self.blade_width: float = 0.1
         self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
         self.pitch = 0
         self.turbine_data = turbine_data
@@ -619,6 +627,9 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             power = T_g * self.generator_efficiency * self.omega  # Power output in Watts
             #: Calculate the new rotor speed
             self.omega = self.omega + omega_dot_t * self.dt
+            #: Calculate the new azimuth angle
+            self.azimuth += self.omega * self.dt
+            self.azimuth %= 2 * np.pi  # Keep the azimuth angle between 0 and 2pi
         else:
             raise Exception("The power calculation method %s is unkown. Try cp-u lut, cp-bpa-tsr, axial induction "
                             "instead." % self.power_calc_method)

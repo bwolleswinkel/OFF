@@ -576,7 +576,7 @@ vis:
     effective_wf_layout: False  
     # Times at witch a debug plot of the wind farm is generated
     # FIXME: It appear that, whenever the time instance is not exactly in the simulation time, it is not plotted; we need to use nearest neighbor interpolation of some sort (and maybe display a warning).
-    time: [80.0] 
+    time: [80.0, 80.2, 80.4, 80.6, 80.8, 81.0] 
     # Turbines for which the debug plot is created
     iT: [0, 1] 
     # Generates the effective wind speed across the farm based on a ghost turbine
