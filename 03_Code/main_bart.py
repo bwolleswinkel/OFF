@@ -30,6 +30,8 @@
 # The settings are defined in the run_example.yaml file, have a look to see what is possible.
 # If you experience issues, create a new issue on the GitHub page https://github.com/TUDelft-DataDrivenControl/OFF
 # //////////////////////////////////////////////////////////////////// #
+#
+# NOTE: For loads, we should really look into "Small Wind Turbine Technology," from Probst et al. (2011)
 
 import os, logging
 logging.basicConfig(level=logging.ERROR)
@@ -49,7 +51,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_3T_with_vis'  # NOTE: Without .yaml
+    input_file_name = 'run_example_1T_ss_conditions'  # NOTE: Without .yaml
 
     # ====== BART ======
 

@@ -312,17 +312,23 @@ class OFF:
                 self.wake_solver.vis_turbine_eff_wind_speed_field(self.wind_farm, self.sim_dir, t)
 
             # ====== BART ======
-            if (self.settings_vis["debug"]["rotor_plane_wind_speed"] and
+            if ('rotor_plane_wind_speed' in self.settings_vis["debug"]) and (self.settings_vis["debug"]["rotor_plane_wind_speed"] and
                     t in self.settings_vis["debug"]["time"]):
                 # FIXME: These are mostly proof of concepts
+                # TEMP
+                #
                 print(f"Plotting rotor plane wind speed at t = {t}")
+                #
                 for turb_idx, tur in enumerate(self.wind_farm.turbines):
                     turb_center_pos = self.wind_farm.get_layout()[turb_idx, :3]
-                    print(f"Turbine {turb_idx} position: {turb_center_pos}")
                     tur_yaw_angle = tur.get_yaw_orientation()
+                    # TEMP
+                    #
+                    print(f"Turbine {turb_idx} position: {turb_center_pos}")
                     print(f"Turbine yaw angle: {tur_yaw_angle}")
                     print(f"Turbine rotor diameter: {tur.diameter}")
                     print(f"Effective wind speed at center: {self.wake_solver.floris_wake.vis_tile(np.atleast_1d(turb_center_pos[0]), np.atleast_1d(turb_center_pos[1]), np.atleast_1d(turb_center_pos[2]))}")
+                    #
                     # Create a meshgrid without rotation
                     N_sample_points_width = 100
                     N_sample_points_height = 150
@@ -334,12 +340,15 @@ class OFF:
                     X, Y, Z = X[0, :, :], Y[0, :, :], Z[0, :, :]
                     X, Y, Z = X.T, Y.T, Z.T
                     X, Y, Z = np.flipud(X), np.flipud(Y), np.flipud(Z)
+                    # TEMP
+                    #
                     print(f"X- values: {X.shape}")
                     print(X)
                     print(f"Y- values: {Y.shape}")
                     print(Y)
                     print(f"Z- values: {Z.shape}")
                     print(Z)
+                    #
                     # Now we ROTATE all the values in the array
                     tur_yaw_angle = tur_yaw_angle * ((2 * np.pi) / 360)
                     Rot_around_z_axis = np.array([[np.cos(tur_yaw_angle), np.sin(tur_yaw_angle), 0],
@@ -352,8 +361,9 @@ class OFF:
                     # Pass them to the flow visualizer
                     vels = self.wake_solver.floris_wake.vis_tile(X.flatten(order='F'), Y.flatten(order='F'), Z.flatten(order='F'))
                     vels = np.reshape(vels, (N_sample_points_height, N_sample_points_width), order='F')
-                    print(f"Velocities: {vels}")
                     # TEMP: Plot this flow field
+                    #
+                    print(f"Velocities: {vels}")
                     import matplotlib.pyplot as plt
                     plt.imshow(vels, cmap='inferno')
                     plt.colorbar()
@@ -361,6 +371,7 @@ class OFF:
                     plt.xlabel("X Position")
                     plt.ylabel("Z Position")
                     plt.show()
+                    #
 
             # ====== BART ======
 

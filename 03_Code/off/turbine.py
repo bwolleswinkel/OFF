@@ -515,9 +515,7 @@ class HAWT_ADM(Turbine):
 # ====== BART ======
 
 class TurbineSimpleDriveTrain(HAWT_ADM):
-    """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia.
-    
-    """
+    """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia."""
 
     def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt):
         super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data)

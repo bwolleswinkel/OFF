@@ -38,10 +38,10 @@
 # Simulation settings
 #  The time step is given in seconds, the start and end time in seconds as well.
 sim:
-  name: Test sim
-  description: Test simulation with 1200s runtime, features a wind direction change from 225 to 235 deg
-
+  name: Verify Sim
+  description: Single turbine with steady ambient conditions
   sim:
+    # NOTE: The time step needs to be small enough to resolve the dynamics of the system
     time step: 0.2
     time start: 0.0
     time end: 100.0
@@ -70,53 +70,19 @@ io:                             # Needs to be written by the user
 #   Note that the layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the trubine information.
 wind_farm:
   name: turbine array
-  description: Nine turbine case with IEA 10 MW turbines at 5D distance
+  description: Single NREL 5 MW RWT
 
   farm:
     layout_x:
       - 0.0
-      - 5.0
-      - 10.0
-      - 0.0
-      - 5.0
-      - 10.0
-      - 0.0
-      - 5.0
-      - 10.0
     layout_y:
       - 0.0
-      - 0.0
-      - 0.0
-      - 5.0
-      - 5.0
-      - 5.0
-      - 10.0
-      - 10.0
-      - 10.0
     layout_z:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
       - 0.0
     turbine_type:
       - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
     unit:
-      - D
-    diameter: # Only needed if unit was set to D
-      - 198.0
+      - 1.
     boundaries_xyz:
       - -2.0
       - 12.0
@@ -141,22 +107,14 @@ ambient:
       - 0.06
     # NOTE: As described here, multiple conditions lead to linear interpolation
     wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 225.0
-      - 225.0
-      - 235.0
+      - 270.0
     wind_directions_t:
       - 0.0
-      - 50.0
-      - 60.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
       - 8.0
-      - 6.0
-      - 10.0
     wind_speeds_t:
       - 0.0
-      - 50.0
-      - 60.0
     wind_veer: 0.0
     corr_overwrite_direction: true # All states are overwritten instead of only the first particle state
 
@@ -261,13 +219,9 @@ controller:
    orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
-     - [225, 225, 225, 225, 225, 225, 225, 225, 225]
-     - [225, 225, 225, 225, 225, 225, 225, 225, 225]
-     - [235, 235, 235, 235, 235, 235, 235, 235, 235]
+     - [270.0]
    orientation_t:          # in s
      - 0.0
-     - 40.0
-     - 60.0
 
 
 # Turbine information
@@ -615,14 +569,14 @@ vis:
 
   debug:
     # Triggers a debug plot, which creates a voronoi "prism" with the TWF models
-    effective_wf_tile: True  
+    effective_wf_tile: False  
     # Generates the tiled landscape in a 5 color scheme
     effective_wf_tile_5color: False  
     # Triggers a debug plot during runtime of the wakes passed on to the wake model
     effective_wf_layout: False  
     # Times at witch a debug plot of the wind farm is generated
     # FIXME: It appear that, whenever the time instance is not exactly in the simulation time, it is not plotted; we need to use nearest neighbor interpolation of some sort (and maybe display a warning).
-    time: [700] 
+    time: [80.0] 
     # Turbines for which the debug plot is created
     iT: [0, 1] 
     # Generates the effective wind speed across the farm based on a ghost turbine
@@ -638,3 +592,5 @@ vis:
     turbine_effective_wind_speed_store_plot: True 
     # Stores the data as .csv in the run folder
     turbine_effective_wind_speed_store_data: True 
+    # NOTE: This was added by me
+    rotor_plane_wind_speed: True
