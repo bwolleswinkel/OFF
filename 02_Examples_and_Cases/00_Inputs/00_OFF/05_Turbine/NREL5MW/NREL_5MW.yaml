@@ -9,6 +9,7 @@ performance:
   rated_rot_speed: 12.1      # in RPM
   tsr_opt: 7.55
   Cp_opt: 0.482
+  # FIXME: The value below makes much more sense as rated generator torque in kNm
   rated_gen_tor_torque: 43_093.55  # in Nm
   pitch:
     pitch_curve:

@@ -244,6 +244,10 @@ class OFF:
         uv_r = np.zeros((len(self.wind_farm.turbines), 2))
         pow_t = np.zeros((len(self.wind_farm.turbines), 1))
 
+        blade_root_bending_moment_t = np.zeros(len(self.wind_farm.turbines))
+        edgewise_bending_moment_t = np.zeros(len(self.wind_farm.turbines))
+        root_normal_force_t = np.zeros(len(self.wind_farm.turbines))
+
         iteration = 0
 
         for t in np.arange(self.settings_sim['time start'],
@@ -275,6 +279,14 @@ class OFF:
                 # Calculate the power generated
                 pow_t[turb_idx, :] = tur.calc_power(util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]))
                 m_tmp['power_OFF'] = pow_t[turb_idx, :]
+
+                # ====== BART ======
+                #: Calculate the loads on the turbine
+                try:
+                    blade_root_bending_moment_t[turb_idx], edgewise_bending_moment_t[turb_idx], root_normal_force_t[turb_idx] = tur.calc_loads()
+                except (AttributeError, NotImplementedError):
+                    pass
+                # ====== BART ======
 
                 # Add turbine index & timestamp to data
                 m_tmp.t_idx = turb_idx
@@ -338,19 +350,10 @@ class OFF:
                     y = np.array(turb_center_pos[1])
                     z = np.linspace(turb_center_pos[2] - tur.diameter/2, turb_center_pos[2] + tur.diameter/2, N_sample_points_height)
                     X, Y, Z = np.meshgrid(x, y, z, indexing='xy')
-                    # TEMP: We do some 'transposition' to make it easier to interpret these finding 
+                    # FIXME: We do some 'transposition' to make it easier to interpret these finding 
                     X, Y, Z = X[0, :, :], Y[0, :, :], Z[0, :, :]
                     X, Y, Z = X.T, Y.T, Z.T
                     X, Y, Z = np.flipud(X), np.flipud(Y), np.flipud(Z)
-                    # TEMP
-                    #
-                    print(f"X- values: {X.shape}")
-                    print(X)
-                    print(f"Y- values: {Y.shape}")
-                    print(Y)
-                    print(f"Z- values: {Z.shape}")
-                    print(Z)
-                    #
                     # Now we ROTATE all the values in the array
                     tur_yaw_angle = tur_yaw_angle * ((2 * np.pi) / 360)
                     Rot_around_z_axis = np.array([[np.cos(tur_yaw_angle), np.sin(tur_yaw_angle), 0],
@@ -365,7 +368,6 @@ class OFF:
                     vels = np.reshape(vels, (N_sample_points_height, N_sample_points_width), order='F')
                     # TEMP: Plot this flow field
                     #
-                    print(f"Velocities: {vels}")
                     import matplotlib.pyplot as plt
                     fig, ax = plt.subplots()
                     im = ax.imshow(vels, cmap='inferno')
@@ -373,98 +375,93 @@ class OFF:
                     plt.title(f"Rotor Plane Wind Speed at t = {t}, turbine idx = {turb_idx}")
                     plt.xlabel("X Position")
                     plt.ylabel("Z Position")
+                    plt.show()
                     #
 
                     #: Get the azeimuth angle of the turbine
-                    # FIXME: This is still not working, gives very weird speed estimates, but only at some angle values, and seems to be correct compared to other ones.
-                    azimuth_angle = tur.azimuth
-                    # TEMP
-                    #
-                    print(f"Azimuth angle: {np.rad2deg(azimuth_angle)} deg at time {t}")
-                    print(f"Rotor speed: {np.rad2deg(tur.omega)} deg/s rpm at time {t}")
-                    #
-                    #: Extract the velocity profiles along the three blades
-                    N_sample_points = 100
-                    r = np.linspace(0, tur.diameter / 2, N_sample_points)
-                    #: Extract the coordinates to a local coordinate frame
-                    x_blade_1, y_blade_1, z_blade_1 = np.full(r.shape, turb_center_pos[0]), \
-                              turb_center_pos[1] + r * np.sin(azimuth_angle), \
-                              turb_center_pos[2] + r * np.cos(azimuth_angle)
-                    x_blade_2, y_blade_2, z_blade_2 = np.full(r.shape, turb_center_pos[0]), \
-                              turb_center_pos[1] + r * np.sin(azimuth_angle + np.deg2rad(120)), \
-                              turb_center_pos[2] + r * np.cos(azimuth_angle + np.deg2rad(120))
-                    x_blade_3, y_blade_3, z_blade_3 = np.full(r.shape, turb_center_pos[0]), \
-                              turb_center_pos[1] + r * np.sin(azimuth_angle + np.deg2rad(240)), \
-                              turb_center_pos[2] + r * np.cos(azimuth_angle + np.deg2rad(240))
-                    # TEMP: Print these coordinates
-                    #
-                    print(f"X- values along blade 1: {x_blade_1}")
-                    print(f"Y- values along blade 1: {y_blade_1}")
-                    print(f"Z- values along blade 1: {z_blade_1}")
-                    #
-                    #: Rotate these coordinates to the global frame
-                    tur_yaw_angle = np.deg2rad(tur_yaw_angle)
-                    Rot_around_z_axis = np.array([[np.cos(tur_yaw_angle), np.sin(tur_yaw_angle), 0],
-                                                  [-np.sin(tur_yaw_angle), np.cos(tur_yaw_angle), 0],
-                                                  [0, 0, 1]])
-                    # TEMP
-                    #
-                    print(f"Rotate around z axis:\n{Rot_around_z_axis}")
-                    #
-                    for flow_idx, _ in np.ndenumerate(x_blade_1):
-                        pos_vec = np.array([x_blade_1[flow_idx], y_blade_1[flow_idx], z_blade_1[flow_idx]])
-                        pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
-                        x_blade_1[flow_idx], y_blade_1[flow_idx], z_blade_1[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
-                    for flow_idx, _ in np.ndenumerate(x_blade_2):
-                        pos_vec = np.array([x_blade_2[flow_idx], y_blade_2[flow_idx], z_blade_2[flow_idx]])
-                        pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
-                        x_blade_2[flow_idx], y_blade_2[flow_idx], z_blade_2[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
-                    for flow_idx, _ in np.ndenumerate(x_blade_3):
-                        pos_vec = np.array([x_blade_3[flow_idx], y_blade_3[flow_idx], z_blade_3[flow_idx]])
-                        pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
-                        x_blade_3[flow_idx], y_blade_3[flow_idx], z_blade_3[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
-                    # Get the wind speeds at these locations
-                    vel_1 = self.wake_solver.floris_wake.vis_tile(x_blade_1, y_blade_1, z_blade_1)
-                    vel_2 = self.wake_solver.floris_wake.vis_tile(x_blade_2, y_blade_2, z_blade_2)
-                    vel_3 = self.wake_solver.floris_wake.vis_tile(x_blade_3, y_blade_3, z_blade_3)
-                    # TEMP: Plot these profiles
-                    #
-                    import matplotlib.pyplot as plt
-                    _, ax_1 = plt.subplots()
-                    ax_1.plot(r, vel_1.flatten(), label=f"Blade 1 (angle = {np.rad2deg(azimuth_angle)} deg)")
-                    ax_1.plot(r, vel_2.flatten(), label=f"Blade 2 (angle = {np.rad2deg(azimuth_angle) + 120} deg)")
-                    ax_1.plot(r, vel_3.flatten(), label=f"Blade 3 (angle = {np.rad2deg(azimuth_angle) + 240} deg)")
-                    ax_1.set_title(f"Rotor Blade Wind Speed at t = {t}, turbine idx = {turb_idx}")
-                    ax_1.set_xlabel("Radius (m)")
-                    ax_1.set_ylabel("Wind Speed (m/s)")
-                    ax_1.legend()
-                    #
+                    try:
+                        # FIXME: This is still not working, gives very weird speed estimates, but only at some angle values, and seems to be correct compared to other ones.
+                        azimuth_angle = tur.azimuth
+                        # TEMP
+                        #
+                        print(f"Azimuth angle: {np.rad2deg(azimuth_angle)} deg at time {t}")
+                        print(f"Rotor speed: {np.rad2deg(tur.omega)} deg/s rpm at time {t}")
+                        #
+                        #: Extract the velocity profiles along the three blades
+                        N_sample_points = 100
+                        r = np.linspace(0, tur.diameter / 2, N_sample_points)
+                        #: Extract the coordinates to a local coordinate frame
+                        x_blade_1, y_blade_1, z_blade_1 = np.full(r.shape, turb_center_pos[0]), \
+                                turb_center_pos[1] + r * np.sin(azimuth_angle), \
+                                turb_center_pos[2] + r * np.cos(azimuth_angle)
+                        x_blade_2, y_blade_2, z_blade_2 = np.full(r.shape, turb_center_pos[0]), \
+                                turb_center_pos[1] + r * np.sin(azimuth_angle + np.deg2rad(120)), \
+                                turb_center_pos[2] + r * np.cos(azimuth_angle + np.deg2rad(120))
+                        x_blade_3, y_blade_3, z_blade_3 = np.full(r.shape, turb_center_pos[0]), \
+                                turb_center_pos[1] + r * np.sin(azimuth_angle + np.deg2rad(240)), \
+                                turb_center_pos[2] + r * np.cos(azimuth_angle + np.deg2rad(240))
+                        #: Rotate these coordinates to the global frame
+                        tur_yaw_angle = np.deg2rad(tur_yaw_angle)
+                        Rot_around_z_axis = np.array([[np.cos(tur_yaw_angle), np.sin(tur_yaw_angle), 0],
+                                                    [-np.sin(tur_yaw_angle), np.cos(tur_yaw_angle), 0],
+                                                    [0, 0, 1]])
+                        for flow_idx, _ in np.ndenumerate(x_blade_1):
+                            pos_vec = np.array([x_blade_1[flow_idx], y_blade_1[flow_idx], z_blade_1[flow_idx]])
+                            pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
+                            x_blade_1[flow_idx], y_blade_1[flow_idx], z_blade_1[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
+                        for flow_idx, _ in np.ndenumerate(x_blade_2):
+                            pos_vec = np.array([x_blade_2[flow_idx], y_blade_2[flow_idx], z_blade_2[flow_idx]])
+                            pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
+                            x_blade_2[flow_idx], y_blade_2[flow_idx], z_blade_2[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
+                        for flow_idx, _ in np.ndenumerate(x_blade_3):
+                            pos_vec = np.array([x_blade_3[flow_idx], y_blade_3[flow_idx], z_blade_3[flow_idx]])
+                            pos_vec_rot = Rot_around_z_axis @ (pos_vec - turb_center_pos) + turb_center_pos
+                            x_blade_3[flow_idx], y_blade_3[flow_idx], z_blade_3[flow_idx] = pos_vec_rot[0], pos_vec_rot[1], pos_vec_rot[2]
+                        # Get the wind speeds at these locations
+                        vel_1 = self.wake_solver.floris_wake.vis_tile(x_blade_1, y_blade_1, z_blade_1)
+                        vel_2 = self.wake_solver.floris_wake.vis_tile(x_blade_2, y_blade_2, z_blade_2)
+                        vel_3 = self.wake_solver.floris_wake.vis_tile(x_blade_3, y_blade_3, z_blade_3)
+                        # TEMP: Plot these profiles
+                        #
+                        import matplotlib.pyplot as plt
+                        _, ax_1 = plt.subplots()
+                        ax_1.plot(r, vel_1.flatten(), label=f"Blade 1 (angle = {np.rad2deg(azimuth_angle)} deg)")
+                        ax_1.plot(r, vel_2.flatten(), label=f"Blade 2 (angle = {np.rad2deg(azimuth_angle) + 120} deg)")
+                        ax_1.plot(r, vel_3.flatten(), label=f"Blade 3 (angle = {np.rad2deg(azimuth_angle) + 240} deg)")
+                        ax_1.set_title(f"Rotor Blade Wind Speed at t = {t}, turbine idx = {turb_idx}")
+                        ax_1.set_xlabel("Radius (m)")
+                        ax_1.set_ylabel("Wind Speed (m/s)")
+                        ax_1.legend()
+                        #
 
-                    # Convert the wind speeds to loads
-                    loads_1 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_1 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
-                    loads_2 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_2 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
-                    loads_3 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_3 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
-                    # TEMP: Plot these load distributions
-                    #
-                    import matplotlib.pyplot as plt
-                    _, ax_2 = plt.subplots()
-                    ax_2.plot(r, loads_1.flatten(), label=f"Blade 1 (angle = {np.rad2deg(azimuth_angle)} deg)")
-                    ax_2.plot(r, loads_2.flatten(), label=f"Blade 2 (angle = {np.rad2deg(azimuth_angle) + 120} deg)")
-                    ax_2.plot(r, loads_3.flatten(), label=f"Blade 3 (angle = {np.rad2deg(azimuth_angle) + 240} deg)")
-                    ax_2.set_title(f"Rotor Blade Load Distribution at t = {t}, turbine idx = {turb_idx}")
-                    ax_2.set_xlabel("Radius (m)")
-                    ax_2.set_ylabel("Load (N)")
-                    ax_2.legend()
-                    #
-                    plt.show()
-                    #
-                    # Convert the distributed loads to forces and moments on the rotor
-                    force_1, force_2, force_3 = np.trapz(loads_1, r), np.trapz(loads_2, r), np.trapz(loads_3, r)
-                    moment_1, moment_2, moment_3 = np.trapz(loads_1 * r, r), np.trapz(loads_2 * r, r), np.trapz(loads_3 * r, r)
-                    # TEMP
-                    #
-                    print(f"Resulting forces on the blades: {force_1} N, {force_2} N, {force_3} N")
-                    print(f"Resulting moments on the blades: {moment_1} Nm, {moment_2} Nm, {moment_3} Nm")
+                        # Convert the wind speeds to loads
+                        loads_1 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_1 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
+                        loads_2 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_2 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
+                        loads_3 = 0.5 * self.settings_cor['ambient']['air_density'] * (vel_3 ** 2) * tur.drag_coeff * tur.blade_chord(r) * tur.blade_width
+                        # Convert the distributed loads to forces and moments on the rotor
+                        force_1, force_2, force_3 = np.trapz(loads_1, r), np.trapz(loads_2, r), np.trapz(loads_3, r)
+                        moment_1, moment_2, moment_3 = np.trapz(loads_1 * r, r), np.trapz(loads_2 * r, r), np.trapz(loads_3 * r, r)
+                        # TEMP
+                        #
+                        print(f"Resulting forces on the blades: {force_1} N, {force_2} N, {force_3} N")
+                        print(f"Resulting moments on the blades: {moment_1} Nm, {moment_2} Nm, {moment_3} Nm")
+                        #
+                        # TEMP: Plot these load distributions
+                        #
+                        import matplotlib.pyplot as plt
+                        _, ax_2 = plt.subplots()
+                        ax_2.plot(r, loads_1.flatten(), label=f"Blade 1 (angle = {np.rad2deg(azimuth_angle)} deg)")
+                        ax_2.plot(r, loads_2.flatten(), label=f"Blade 2 (angle = {np.rad2deg(azimuth_angle) + 120} deg)")
+                        ax_2.plot(r, loads_3.flatten(), label=f"Blade 3 (angle = {np.rad2deg(azimuth_angle) + 240} deg)")
+                        ax_2.set_title(f"Rotor Blade Load Distribution at t = {t}, turbine idx = {turb_idx}")
+                        ax_2.set_xlabel("Radius (m)")
+                        ax_2.set_ylabel("Load (N)")
+                        ax_2.legend()
+                        #
+                        plt.show()
+                    except AttributeError:
+                        print("Turbine has no azimuth angle, cannot extract blade specific wind speeds and loads.")
+                        pass
                     #
 
             # ====== BART ======

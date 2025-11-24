@@ -544,7 +544,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
         self.K = 2680752.3292693296
 
-    def calc_power(self, wind_speed, air_den=1.225):
+    def calc_power(self, wind_speed, air_den=1.225) -> float:
         """Calculate the power based on turbine, ambient and OP states, and the current turbine dynamics
 
         Parameters
@@ -633,8 +633,12 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         else:
             raise Exception("The power calculation method %s is unkown. Try cp-u lut, cp-bpa-tsr, axial induction "
                             "instead." % self.power_calc_method)
-
         return power
+    
+    def calc_loads(self) -> list[float]:
+        """Calculate teh blade root bending moment, edgewise bending moment, and root normal force."""
+        raise NotImplementedError("Load calculation not implemented yet")
+        
     
 # ====== BART ======
 

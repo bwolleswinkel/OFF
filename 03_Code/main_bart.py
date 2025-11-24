@@ -32,6 +32,8 @@
 # //////////////////////////////////////////////////////////////////// #
 #
 # NOTE: For loads, we should really look into "Small Wind Turbine Technology," from Probst et al. (2011)
+# NOTE: For loads, and chord lengths, we need to check out the following, where parameters are provided: 
+# FROM: https://ieawindsystems.github.io/windIO/main/source/how_to_build_a_turbine_model.html  # nopep8
 
 import os, logging
 logging.basicConfig(level=logging.ERROR)
@@ -51,7 +53,7 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_example_1T_ss_conditions'  # NOTE: Without .yaml
+    input_file_name = 'run_9T_marcus_wt_dynamics'  # NOTE: Without .yaml
 
     # ====== BART ======
 

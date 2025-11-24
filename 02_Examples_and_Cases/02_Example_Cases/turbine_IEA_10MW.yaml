@@ -252,3 +252,4 @@ iea_10MW:
     rotor_overhang: 7.07        # in m    # TODO Copied from DTU 10MW - Change!
     shaft_tilt: 5               # in deg  # TODO Copied from DTU 10MW - Change!
     yaw_rate_lim: 0.3           # deg/s   # TODO Find true value
+    hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2  # TODO: Copied from the NREL 5MW - Change!
