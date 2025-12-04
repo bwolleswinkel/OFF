@@ -56,7 +56,7 @@ def main():
     # run_1T_ss_wt_dynamics_loads
     # run_nine_turbine_marcus_revised
     # run_example_bart_wt_dynamics
-    input_file_name = 'run_1T_ss_wt_dynamics_loads'  # NOTE: Without .yaml
+    input_file_name = 'run_3T_wt_dynamics_loads'  # NOTE: Without .yaml
 
     # ====== BART ======
 

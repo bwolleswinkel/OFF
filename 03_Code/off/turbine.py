@@ -739,11 +739,13 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             #: Calculate the normal force
             normal_force[blade_idx] = centrifugal_force + gravitational_force_par
             #: Calculate the edgewise bending moment
+            # TODO: Here, this should actually also include the lift component, as this bends the blade in the edgewise direction as well
             edgewise_bending_moment[blade_idx] = gravitational_force_perp * self.blade_com  # NOTE: Here, we assume that clockwise rotation is positive, so a bending moment 'downwards' is positive
             #: Calculate the flapwise bending moment
             # NOTE: Here, we assume that 'backwards' (in the same direction as the wind) bending is positive
             # TODO: Also incorporate the angle at which the wind hits the blade, both due to wind direction + yaw, but also a loss factor due to the blades pitching. Note that this also induces a edgewise component (misaligned wind direction)!
             #: Match the mode of calculating the moment
+            # FIXME: The loads, very clearly, do NOT seem to be correct, because there are very sharp discontinuous jumps in the load time series. Need to investigate this further. 
             match int_mode:
                 case 'scipy':
                     flapwise_bending_moment[blade_idx], *_ = sp.integrate.quad(lambda r: dist_wind_load(r) * r, 0, self.rotor_radius)
@@ -757,6 +759,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                     #: Calculate the local wind speeds at all radial positions
                     local_wind_speeds = vis_tile(coords[0, :], coords[1, :], coords[2, :]).squeeze()
                     #: Calculate the distributed wind loads at all radial positions
+                    # TODO: Add the blade-pitch induced loss factor here, with some sine-cosine, due to the angling of the blade. Also, this could be a fully-fledged drag-coefficient based calculation, instead of just a flat distributed load.
                     distributed_wind_loads = 0.5 * self.AIR_DENSITY * local_wind_speeds ** 2 * (self.blade_chord(np.linspace(0, 1, nint_points)) * (self.rotor_radius / nint_points))  # in N/m
                     #: Calculate the  flapwise bending moment
                     flapwise_bending_moment[blade_idx] = np.sum([distributed_wind_loads[idx] * r_values[idx] * dr for idx in range(nint_points)])
