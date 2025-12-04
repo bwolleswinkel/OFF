@@ -53,6 +53,7 @@ class OFF:
         self.settings_vis = vis
         # ====== BART ======
         self.settings_cor = settings_cor
+        self.settings_turbine = settings_turbine
         # ====== BART ======
         self.__dir_init__( settings_sim )
         self.__logger_init__( settings_sim )
@@ -243,10 +244,13 @@ class OFF:
 
         uv_r = np.zeros((len(self.wind_farm.turbines), 2))
         pow_t = np.zeros((len(self.wind_farm.turbines), 1))
-
-        blade_root_bending_moment_t = np.zeros(len(self.wind_farm.turbines))
-        edgewise_bending_moment_t = np.zeros(len(self.wind_farm.turbines))
-        root_normal_force_t = np.zeros(len(self.wind_farm.turbines))
+        
+        # ====== BART ======
+        # FIXME: Now, the number of blades is still hardcoded to 3
+        flapwise_bending_moment_t = np.zeros((3, len(self.wind_farm.turbines)))
+        edgewise_bending_moment_t = np.zeros((3, len(self.wind_farm.turbines)))
+        normal_force_t = np.zeros((3, len(self.wind_farm.turbines)))
+        # ====== BART ======
 
         iteration = 0
 
@@ -282,15 +286,25 @@ class OFF:
 
                 # ====== BART ======
                 #: Calculate the loads on the turbine
-                try:
-                    blade_root_bending_moment_t[turb_idx], edgewise_bending_moment_t[turb_idx], root_normal_force_t[turb_idx] = tur.calc_loads()
-                except (AttributeError, NotImplementedError):
+                if 'dynamics' in self.settings_turbine and 'loads' in self.settings_turbine['dynamics'] and self.settings_turbine['dynamics']['loads'] == 'first_principles':
+                    flapwise_bending_moment_t[:, turb_idx], edgewise_bending_moment_t[:, turb_idx], normal_force_t[:, turb_idx] = tur.calc_loads(self.wake_solver.floris_wake.vis_tile)
+                else:
                     pass
                 # ====== BART ======
 
                 # Add turbine index & timestamp to data
                 m_tmp.t_idx = turb_idx
                 m_tmp['time'] = t
+                # ====== BART ======
+                # Add loads to data
+                if 'dynamics' in self.settings_turbine and 'loads' in self.settings_turbine['dynamics'] and self.settings_turbine['dynamics']['loads'] == 'first_principles':
+                    for blade_idx in range(flapwise_bending_moment_t.shape[0]):
+                        m_tmp[f'flapwise_bending_moment_blade_{blade_idx + 1}'] = flapwise_bending_moment_t[blade_idx, turb_idx]
+                        m_tmp[f'edgewise_bending_moment_blade_{blade_idx + 1}'] = edgewise_bending_moment_t[blade_idx, turb_idx]
+                        m_tmp[f'normal_force_blade_{blade_idx + 1}'] = normal_force_t[blade_idx, turb_idx]
+                else:
+                    pass
+                # ====== BART ======
 
                 # Append turbine measurements to general measurement data
                 measurements = pd.concat([measurements, m_tmp], ignore_index=True)

@@ -53,7 +53,10 @@ def main():
 
     from utils import tableau_color_palette_10 as col_vals
 
-    input_file_name = 'run_9T_marcus_wt_dynamics'  # NOTE: Without .yaml
+    # run_1T_ss_wt_dynamics_loads
+    # run_nine_turbine_marcus_revised
+    # run_example_bart_wt_dynamics
+    input_file_name = 'run_1T_ss_wt_dynamics_loads'  # NOTE: Without .yaml
 
     # ====== BART ======
 
@@ -151,6 +154,20 @@ def main():
     # Extract the yaw angles, and actual orientation
     yaw_angles = [control_applied.loc[control_applied['t_idx'] == idx, 'yaw'] for idx in range(n_wt)]
     turbine_orientation = [control_applied.loc[control_applied['t_idx'] == idx, 'orientation'] for idx in range(n_wt)]
+
+    # Extract the loads on each turbine
+    flapwise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'flapwise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+    edgewise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'edgewise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+    normal_force = [[measurements.loc[measurements['t_idx'] == idx, f'normal_force_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+
+    # TEMP
+    #
+    print(flapwise_bending_moment)
+    print(len(flapwise_bending_moment))
+    print(flapwise_bending_moment[0][0])
+    print(flapwise_bending_moment[0][1])
+    print(flapwise_bending_moment[0][2])
+    #
 
     # ------ PLOTTING ------
 

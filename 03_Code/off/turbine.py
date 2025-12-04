@@ -18,7 +18,8 @@
 
 import warnings
 # ====== BART ======
-from typing import Callable
+from typing import Callable, Literal
+import scipy as sp
 # ====== BART ======
 
 import numpy as np
@@ -520,16 +521,19 @@ class HAWT_ADM(Turbine):
 class TurbineSimpleDriveTrain(HAWT_ADM):
     """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia."""
 
-    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt):
+    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None):
         super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data)
         #: Add the dynamic states
         # FIXME: These need to be able to be passed to the turbine
         # FIXME: We need to check that all these arguments are here before running this code
         self.azimuth = 0  # In rad
-        # FIXME: Right now, these are placeholder values and implemention
-        self.drag_coeff: float = 0.5
-        self.blade_chord: Callable = lambda r: 3.0 - 0.02 * r  # In m, as a function of radius
-        self.blade_width: float = 0.1
+        # FIXME: Right now, these are placeholder values and implementation
+        if load_model == 'first_principles':
+            self.blade_mass: float = turbine_data['blade_mass']
+            self.blade_com: float = turbine_data['blade_com']
+            # NOTE: Currently, this is expected to be a lambda expression as a string in the input `.yaml` file, of the form 'lambda fraction: ...'
+            self.blade_chord: Callable[[float], float] = eval(turbine_data['blade_chord'])
+        # FIXME: This is hard-coded now... should really be passed as an argument
         self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
         self.pitch = 0
         self.turbine_data = turbine_data
@@ -543,7 +547,11 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         # self.K = 1 / (2 * (((turbine_data['performance']['rated_rot_speed'] * self.rotor_radius) / turbine_data['performance']['rated_wind_speed']) ** 3)) * 1.225 * np.pi * (self.rotor_radius ** 5) * turbine_data['performance']['Cp_opt']
         # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
         self.K = 2680752.3292693296
-
+        self.GRAV_CONST = 9.81  # m/s^2
+        self.AIR_DENSITY = 1.225  # kg/m^3
+        # FIXME: This should also be defined in the input file
+        self.N_BLADE = 3
+        
     def calc_power(self, wind_speed, air_den=1.225) -> float:
         """Calculate the power based on turbine, ambient and OP states, and the current turbine dynamics
 
@@ -628,6 +636,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             #: Calculate the new rotor speed
             self.omega = self.omega + omega_dot_t * self.dt
             #: Calculate the new azimuth angle
+            # FIXME: Do we actually wan't to update that here? Probably not, right? Maybe just at either the very beginning, the first function call, or the very end one?
             self.azimuth += self.omega * self.dt
             self.azimuth %= 2 * np.pi  # Keep the azimuth angle between 0 and 2pi
         else:
@@ -635,9 +644,126 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                             "instead." % self.power_calc_method)
         return power
     
-    def calc_loads(self) -> list[float]:
-        """Calculate teh blade root bending moment, edgewise bending moment, and root normal force."""
-        raise NotImplementedError("Load calculation not implemented yet")
+    def calc_loads(self, vis_tile: Callable[[tuple[float, float, float]], float], int_mode: Literal['scipy', 'riemann'] = 'riemann', nint_points: int = 100) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Calculate the blade root flapwise bending moment, edgewise bending moment, and normal force."""
+
+        def get_blade_coords(fraction: float) -> np.ndarray:
+            """Get the coordinates of the blade points in the global frame.
+
+            Parameters
+            ----------
+            t : float
+                Time instant
+            wt_idx : int
+                Wind turbine index
+            blade_idx : int
+                Blade index
+            pos : float
+                Position along the blade, where pos ∈ (0, 1)
+
+            Returns
+            -------
+            np.ndarray
+                Coordinates of the blade points in the global frame.
+            """
+            # NOTE: This function assumes `blade_azimuth` is defined in its outer scope
+
+            def rot_mat_y(angle_rad: float) -> np.ndarray:
+                """Clockwise rotation matrix around the y-axis."""
+                # FROM: GitHub Copilot GPT-4o | 2025/12/01
+                c = np.cos(angle_rad)
+                s = np.sin(angle_rad)
+                return np.array([[c, 0, s],
+                                [0, 1, 0],
+                                [-s, 0, c]])
+            
+            def rot_mat_z(angle_rad: float) -> np.ndarray:
+                """Clockwise rotation matrix around the z-axis."""
+                # FROM: GitHub Copilot GPT-4o | 2025/12/01
+                c = np.cos(angle_rad)
+                s = np.sin(angle_rad)
+                return np.array([[c, -s, 0],
+                                [s, c, 0],
+                                [0, 0, 1]])
+
+            #: Calculate local blade coordinates around the y-axis
+            # NOTE: It seems to be that, within FLORIS, the yaw angles is NOT defined as being positive clockwise; as such, we need to subtract that angle here in order to make the right calculation
+            # FROM: https://nrel.github.io/floris/examples/examples_control_optimization/001_opt_yaw_single_ws.html  # nopep8
+            x_local = rot_mat_y(blade_azimuth) @ np.array([0, 0, fraction * self.rotor_radius])
+            # Calculate the total rotation around the z-axis
+            # NOTE: In this model, we are ignoring the tilt angle
+            # FIXME: Here, we also need to take into account the wind direction!
+            total_yaw_rad = np.radians(self.get_yaw_orientation())
+            x_global = rot_mat_z(total_yaw_rad) @ x_local
+            return x_global
+        
+        def dist_wind_load(r: float) -> float:
+            """Calculate the distributed wind load (in N/m) at a given radial position along the blade.
+
+            Parameters
+            ----------
+            r : float
+                Radial position along the blade (in m)
+
+            Returns
+            -------
+            float:
+                Distributed wind load at the given radial position (in N/m)
+            """
+            # NOTE: This function assumes `blade_azimuth` is defined in its outer scope 
+            
+            #: Normalize the radial position
+            fraction = r / self.rotor_radius  # NOTE: This is a value between 0 and 1
+            #: Get the global coordinates of the radial position based on wind direction, turbine orientation, and azimuth angle
+            coords = get_blade_coords(blade_azimuth, fraction) + self.get_rotor_pos()
+            #: Calculate the local wind speed at the given radial position
+            local_wind_speed = vis_tile(np.atleast_1d(coords[0]), np.atleast_1d(coords[1]), np.atleast_1d(coords[2]))
+            #: Calculate the local chord length at the given radial position
+            local_chord = self.blade_chord(r)
+            #: Calculate the distributed wind load
+            # FIXME: This is actually not correct when sp.integrate.quad is used, as it already integrates over `dr`, so we should not multiply by `local_chord * (self.rotor_radius / nint_points)` here, and nint_points is NOT the number of points used in the integration!
+            dist_load = 0.5 * self.AIR_DENSITY * local_wind_speed ** 2 * (local_chord * (self.rotor_radius / nint_points))  # in N/m
+            #: Return the result
+            return dist_load
+        
+        #: Initialize the results
+        flapwise_bending_moment, edgewise_bending_moment, normal_force = [np.zeros(self.N_BLADE) for _ in range(3)]
+        #: Loop over all the blades
+        for blade_idx in range(self.N_BLADE):
+            #: Calculate the azimuth angle of the blade
+            blade_azimuth = self.azimuth + np.radians(blade_idx * 120)
+            #: Calculate the centrifugal force
+            centrifugal_force = self.blade_mass * (self.omega ** 2) * self.rotor_radius
+            #: Calculate the gravitational force
+            gravitational_force_par, gravitational_force_perp = self.blade_mass * self.GRAV_CONST * (-1) * np.cos(blade_azimuth), self.blade_mass * self.GRAV_CONST * (-1) * np.sin(blade_azimuth)  # NOTE: This makes sure that 0 deg is fully pointing negative in the parallel blade direction (x-axis), and 90 deg is fully pointing negative in the perpendicular blade direction (y-axis)
+            #: Calculate the normal force
+            normal_force[blade_idx] = centrifugal_force + gravitational_force_par
+            #: Calculate the edgewise bending moment
+            edgewise_bending_moment[blade_idx] = gravitational_force_perp * self.blade_com  # NOTE: Here, we assume that clockwise rotation is positive, so a bending moment 'downwards' is positive
+            #: Calculate the flapwise bending moment
+            # NOTE: Here, we assume that 'backwards' (in the same direction as the wind) bending is positive
+            # TODO: Also incorporate the angle at which the wind hits the blade, both due to wind direction + yaw, but also a loss factor due to the blades pitching. Note that this also induces a edgewise component (misaligned wind direction)!
+            #: Match the mode of calculating the moment
+            match int_mode:
+                case 'scipy':
+                    flapwise_bending_moment[blade_idx], *_ = sp.integrate.quad(lambda r: dist_wind_load(r) * r, 0, self.rotor_radius)
+                case 'riemann':
+                    dr = self.rotor_radius / nint_points
+                    r_values = np.linspace(dr / 2, self.rotor_radius - dr / 2, nint_points)  # Midpoint Riemann sum
+                    #: Calculate the coordinate values
+                    coords = np.zeros((3, nint_points))
+                    for idx in range(nint_points):
+                        coords[:, idx] = get_blade_coords(idx / nint_points) + self.get_rotor_pos()
+                    #: Calculate the local wind speeds at all radial positions
+                    local_wind_speeds = vis_tile(coords[0, :], coords[1, :], coords[2, :]).squeeze()
+                    #: Calculate the distributed wind loads at all radial positions
+                    distributed_wind_loads = 0.5 * self.AIR_DENSITY * local_wind_speeds ** 2 * (self.blade_chord(np.linspace(0, 1, nint_points)) * (self.rotor_radius / nint_points))  # in N/m
+                    #: Calculate the  flapwise bending moment
+                    flapwise_bending_moment[blade_idx] = np.sum([distributed_wind_loads[idx] * r_values[idx] * dr for idx in range(nint_points)])
+                case _:
+                    raise ValueError(f"Unsupported integration mode '{int_mode}'")
+        #: Return the results
+        return flapwise_bending_moment, edgewise_bending_moment, normal_force
         
     
 # ====== BART ======

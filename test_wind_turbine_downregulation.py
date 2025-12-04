@@ -53,7 +53,7 @@ EXP_FACTOR = 5E1  # 1E2, very good! 5E1, even better!
 
 # Set the downregulation mode (if applicable)
 downreg_mode: Literal['max_omega', 'const_omega', 'constant_tsr', 'min_Ct'] = 'min_Ct'
-P_derated: float = 1E6  # NOTE: If P_derated ∈ (0, 1), it assumes a fraction of rated power. If P_derated > 1, it assumes derated power in Watts.
+P_derated: float = 0.15  # NOTE: If P_derated ∈ (0, 1), it assumes a fraction of rated power. If P_derated > 1, it assumes derated power in Watts.
 
 # Set the initial rotor speed
 omega_0 = None  # RPM | If None, set to rated rotor speed
