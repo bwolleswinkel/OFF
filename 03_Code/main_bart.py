@@ -32,7 +32,7 @@
 # //////////////////////////////////////////////////////////////////// #
 #
 # NOTE: For loads, we should really look into "Small Wind Turbine Technology," from Probst et al. (2011)
-# NOTE: For loads, and chord lengths, we need to check out the following, where parameters are provided: 
+# NOTE: For loads, and chord lengths, we need to check out the following, where parameters are provided:
 # FROM: https://ieawindsystems.github.io/windIO/main/source/how_to_build_a_turbine_model.html  # nopep8
 
 import os, logging
