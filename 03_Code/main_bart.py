@@ -56,6 +56,7 @@ def main():
     # run_1T_ss_wt_dynamics_loads
     # run_nine_turbine_marcus_revised
     # run_example_bart_wt_dynamics
+    # run_3T_wt_dynamics_loads
     input_file_name = 'run_3T_wt_dynamics_loads'  # NOTE: Without .yaml
 
     # ====== BART ======
@@ -156,13 +157,18 @@ def main():
     turbine_orientation = [control_applied.loc[control_applied['t_idx'] == idx, 'orientation'] for idx in range(n_wt)]
 
     # Extract the loads on each turbine
-    flapwise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'flapwise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
-    edgewise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'edgewise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
-    normal_force = [[measurements.loc[measurements['t_idx'] == idx, f'normal_force_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
-    # Convert to pandas dataframe per turbine
-    flapwise_bending_moment = [pd.concat(flapwise_bending_moment[idx], axis=1) for idx in range(n_wt)]
-    edgewise_bending_moment = [pd.concat(edgewise_bending_moment[idx], axis=1) for idx in range(n_wt)]
-    normal_force = [pd.concat(normal_force[idx], axis=1) for idx in range(n_wt)]
+    try:
+        flapwise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'flapwise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+        edgewise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'edgewise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+        normal_force = [[measurements.loc[measurements['t_idx'] == idx, f'normal_force_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
+        # Convert to pandas dataframe per turbine
+        flapwise_bending_moment = [pd.concat(flapwise_bending_moment[idx], axis=1) for idx in range(n_wt)]
+        edgewise_bending_moment = [pd.concat(edgewise_bending_moment[idx], axis=1) for idx in range(n_wt)]
+        normal_force = [pd.concat(normal_force[idx], axis=1) for idx in range(n_wt)]
+    except KeyError:
+        flapwise_bending_moment = None
+        edgewise_bending_moment = None
+        normal_force = None
 
     # ------ PLOTTING ------
 
@@ -256,33 +262,36 @@ def main():
     fig_power_thrust_eff.suptitle(r"Effective $C_{\mathrm{P}}$ and $C_{\mathrm{T}}$ values")
 
     # Plot the loads
-    fig_loads, axs_loads = plt.subplots(3, n_wt, sharex=True)
-    for wt_idx in range(n_wt):
-        for blade_idx in range(3):
-            # BUG: If `axs_loads` has only one column, indexing fails; hence the workaround below
+    if flapwise_bending_moment is not None:
+        fig_loads, axs_loads = plt.subplots(3, n_wt, sharex=True)
+        for wt_idx in range(n_wt):
+            for blade_idx in range(3):
+                # BUG: If `axs_loads` has only one column, indexing fails; hence the workaround below
+                if n_wt == 1:
+                    axs_loads[0].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    axs_loads[1].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    axs_loads[2].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                else:
+                    axs_loads[0, wt_idx].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    axs_loads[1, wt_idx].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    axs_loads[2, wt_idx].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
             if n_wt == 1:
-                axs_loads[0].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                axs_loads[1].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                axs_loads[2].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                axs_loads[0].set_title(f'Turbine {wt_idx + 1:02d}')
+                axs_loads[0].set_ylabel('Flapwise Bending Moment (in Nm)')
+                axs_loads[1].set_ylabel('Edgewise Bending Moment (in Nm)')
+                axs_loads[2].set_ylabel('Normal Force (in N)')
+                axs_loads[2].set_xlabel(r"Time $t$ (in s)")
+                axs_loads[0].legend(loc='upper left', ncols=1)
             else:
-                axs_loads[0, wt_idx].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                axs_loads[1, wt_idx].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                axs_loads[2, wt_idx].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-        if n_wt == 1:
-            axs_loads[0].set_title(f'Turbine {wt_idx + 1:02d}')
-            axs_loads[0].set_ylabel('Flapwise Bending Moment (in Nm)')
-            axs_loads[1].set_ylabel('Edgewise Bending Moment (in Nm)')
-            axs_loads[2].set_ylabel('Normal Force (in N)')
-            axs_loads[2].set_xlabel(r"Time $t$ (in s)")
-            axs_loads[0].legend(loc='upper left', ncols=1)
-        else:
-            axs_loads[0, wt_idx].set_title(f'Turbine {wt_idx:02d}')
-            axs_loads[0, wt_idx].set_ylabel('Flapwise Bending Moment (in Nm)')
-            axs_loads[1, wt_idx].set_ylabel('Edgewise Bending Moment (in Nm)')
-            axs_loads[2, wt_idx].set_ylabel('Normal Force (in N)')
-            axs_loads[2, wt_idx].set_xlabel(r"Time $t$ (in s)")
-            axs_loads[0, wt_idx].legend(loc='upper left', ncols=1)
-    fig_loads.suptitle("Loads on each turbine")
+                axs_loads[0, wt_idx].set_title(f'Turbine {wt_idx:02d}')
+                axs_loads[0, wt_idx].set_ylabel('Flapwise Bending Moment (in Nm)')
+                axs_loads[1, wt_idx].set_ylabel('Edgewise Bending Moment (in Nm)')
+                axs_loads[2, wt_idx].set_ylabel('Normal Force (in N)')
+                axs_loads[2, wt_idx].set_xlabel(r"Time $t$ (in s)")
+                axs_loads[0, wt_idx].legend(loc='upper left', ncols=1)
+        fig_loads.suptitle("Loads on each turbine")
+    else:
+        fig_loads = None
 
     # Plot the power
     if plot_power_seperate:

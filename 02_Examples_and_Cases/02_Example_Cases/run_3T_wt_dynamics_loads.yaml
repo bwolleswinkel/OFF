@@ -41,7 +41,7 @@ sim:
     # NOTE: The time step needs to be small enough to resolve the dynamics of the system, i.e., for forward Euler to be numerically stable.
     time step: 0.1
     time start: 0.0
-    time end: 150.0
+    time end: 50.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
