@@ -46,6 +46,18 @@ generator_efficiency = 0.994
 
 # Calculate the power coefficient
 Cp_u = 2 * P_u / (air_density * np.pi * (rotor_radius ** 2) * (u ** 3) * generator_efficiency)
+
+# Calculate the optimal controller gain
+closest_idx = np.argmin(np.abs(P_u - 5E6))  # FIXME: This is hardcoded, and all placeholder...
+u_rated = u[closest_idx]
+tsr_opt = fmodel.core.farm.turbine_map[0].TSR
+Cp_opt = np.nanmax(Cp_u.flatten())
+K = 1 / (2 * (tsr_opt ** 3)) * air_density * np.pi * (rotor_radius ** 5) * Cp_opt
+
+# Calculate the rotor speed over the wind speeds
+# NOTE: Here, we assume a K omega control strategy; how do we know for sure?
+# FIXME: This might be entirely wrong...
+rotor_speed_u = np.power(P_u / K, 1 / 3) * (60 / (2 * np.pi))  # Convert to RPM
   
 # Create an interpolation function for Cp and Ct
 Cp_interp = lambda lbd_pitch, lbd_tsr: sp.interpolate.griddata(np.array((pitch.flatten(), tsr.flatten())).T, Cp.flatten(), (lbd_pitch, lbd_tsr))
@@ -95,6 +107,15 @@ ax_ct_u.set_ylabel(r"Thrust coefficient (in -)")
 ax_ct_u.legend(loc='upper right')
 ax_ct_u.set_xlabel(r"Wind speed $u$ (in m/s)")
 ax_ct_u.set_xlim([0, 30])
+
+# Plot the rotor speed curve
+fig_rotor_speed_u, ax_rotor_speed_u = plt.subplots()
+ax_rotor_speed_u.plot(u, rotor_speed_u, label=r"Rotor speed $\omega(u)$")
+ax_rotor_speed_u.axvline(u_rated, color='red', linestyle='--', label=f"U_rated at {u_rated:.1f} m/s")
+ax_rotor_speed_u.set_ylabel('Rotor speed (in RPM)')
+ax_rotor_speed_u.set_xlabel(r"Wind speed $u$ (in m/s)")
+ax_rotor_speed_u.legend(loc='upper right')
+ax_rotor_speed_u.set_xlim([0, 30])
 
 # Plot the Cp and Ct curves
 fig_cp_ct_pitch_tsr, (ax_cp, ax_ct, ax_stall) = plt.subplots(1, 3)
