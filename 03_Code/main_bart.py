@@ -57,6 +57,7 @@ def main():
     # run_nine_turbine_marcus_revised
     # run_example_bart_wt_dynamics
     # run_3T_wt_dynamics_loads
+    # FIXME: I think the trouble is actually with the tilt!! That's why we see the chattering in the moments. Ohh shit... no the tilt is actually 0 degrees so this doesn't explain it...
     input_file_name = 'run_3T_wt_dynamics_loads'  # NOTE: Without .yaml
 
     # ====== BART ======
