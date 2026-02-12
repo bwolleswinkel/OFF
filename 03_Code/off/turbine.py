@@ -647,7 +647,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
     def calc_loads(self, vis_tile: Callable[[tuple[float, float, float]], float], int_mode: Literal['scipy', 'riemann'] = 'riemann', nint_points: int = 100) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Calculate the blade root flapwise bending moment, edgewise bending moment, and normal force."""
 
-        def get_blade_coords(fraction: float) -> np.ndarray:
+        def get_blade_coords(blade_azimuth: float,fraction: float) -> np.ndarray:
             """Get the coordinates of the blade points in the global frame.
 
             Parameters
@@ -692,12 +692,12 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             x_local = rot_mat_y(blade_azimuth) @ np.array([0, 0, fraction * self.rotor_radius])
             # Calculate the total rotation around the z-axis
             # NOTE: In this model, we are ignoring the tilt angle
-            # FIXME: Here, we also need to take into account the wind direction!
-            total_yaw_rad = np.radians(self.get_yaw_orientation())
-            x_global = rot_mat_z(total_yaw_rad) @ x_local
+            # FIXME: Here, something seems to be wrong; when the turbine is yawed w.r.t. the wind direction, this should still work, as we are taking the global orientation of the wind direction; however, it seems the flow sampler is still 'expecting' the turbine to be oriented w.r.t. the wind direction, and the wind speeds that we get are NOT correct. NO, it turns out the issue is deeper; even selecting both to be 260 degrees, the methodology does not seem to work. So I guess it's really the rotations which are off, and we need to investigate that further. When does it work: wd 270, wt 270, NOT work: wd 260, wt 260. Wait! If wd 260, hardcoding wt 280 seems to work... Yes! wd 200, hardcoding wt 270 + 70, but indeed, wd 200, with wt 210, but hardcoding 270 + 70 (so based on wd) does work; however, wd 200, wt 210, but hardcoding 270 + 60 does NOT work. Si it seems 270 + (270 - wd)
+            total_turbine_orientation_rad = np.radians(180 - self.ambient_states.get_wind_dir()[0])
+            x_global = rot_mat_z(total_turbine_orientation_rad) @ x_local
             return x_global
         
-        def dist_wind_load(r: float) -> float:
+        def dist_wind_load(r: float, blade_azimuth: float) -> float:
             """Calculate the distributed wind load (in N/m) at a given radial position along the blade.
 
             Parameters
@@ -748,14 +748,14 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             # FIXME: The loads, very clearly, do NOT seem to be correct, because there are very sharp discontinuous jumps in the load time series. Need to investigate this further. 
             match int_mode:
                 case 'scipy':
-                    flapwise_bending_moment[blade_idx], *_ = sp.integrate.quad(lambda r: dist_wind_load(r) * r, 0, self.rotor_radius)
+                    flapwise_bending_moment[blade_idx], *_ = sp.integrate.quad(lambda r, blade_azimuth: dist_wind_load(r, blade_azimuth) * r, 0, self.rotor_radius, args=(blade_azimuth,))
                 case 'riemann':
                     dr = self.rotor_radius / nint_points
                     r_values = np.linspace(dr / 2, self.rotor_radius - dr / 2, nint_points)  # Midpoint Riemann sum
                     #: Calculate the coordinate values
                     coords = np.zeros((3, nint_points))
                     for idx in range(nint_points):
-                        coords[:, idx] = get_blade_coords(idx / nint_points) + self.get_rotor_pos()
+                        coords[:, idx] = get_blade_coords(blade_azimuth, idx / nint_points) + self.get_rotor_pos()
                     #: Calculate the local wind speeds at all radial positions
                     local_wind_speeds = vis_tile(coords[0, :], coords[1, :], coords[2, :]).squeeze()
                     #: Calculate the distributed wind loads at all radial positions
