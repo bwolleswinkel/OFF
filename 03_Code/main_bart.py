@@ -31,6 +31,7 @@
 # If you experience issues, create a new issue on the GitHub page https://github.com/TUDelft-DataDrivenControl/OFF
 # //////////////////////////////////////////////////////////////////// #
 #
+# TODO: The `ObservationPoint` should be it's own (data)class, and should store the appropriate attributes. This would be a much cleaner interpretation. For speed/convenience, they could also be simply stored as lists.
 # NOTE: For loads, we should really look into "Small Wind Turbine Technology," from Probst et al. (2011)
 # NOTE: For loads, and chord lengths, we need to check out the following, where parameters are provided:
 # FROM: https://ieawindsystems.github.io/windIO/main/source/how_to_build_a_turbine_model.html  # nopep8

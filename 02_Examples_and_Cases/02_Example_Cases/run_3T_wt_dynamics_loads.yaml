@@ -179,7 +179,7 @@ controller:
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
      - [270.0, 270.0, 270.0]
-     - [250.0, 250.0, 250.0]
+     - [260.0, 250.0, 240.0]
    orientation_t:          # in s
      - 0.0
      - 30.0
