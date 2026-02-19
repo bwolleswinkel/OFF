@@ -44,10 +44,6 @@ u = wfm.core.farm.turbine_map[0].power_thrust_table['wind_speed']
 # Set the new CT values for the first turbine
 wfm.core.farm.turbine_map[0].power_thrust_table['thrust_coefficient'] = np.full(u.size, ct_value)
 
-wt_idx = ...
-
-wfm.core.farm.turbine_map[wt_idx].power_thrust_table['thrust_coefficient'] = np.full(u.size, ct_value)
-
 # Run the model again
 wfm.run()
 
