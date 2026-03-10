@@ -536,6 +536,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         # FIXME: This is hard-coded now... should really be passed as an argument
         self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
         self.pitch = 0
+        self.operational_mode: Literal['power_production', 'shutting_down', 'stopped', 'starting_up'] = 'power_production'
         self.turbine_data = turbine_data
         self.rotor_radius = self.diameter / 2
         self.inertia = turbine_data['hub_inertia_low_speed_shaft']
@@ -547,6 +548,8 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         # self.K = 1 / (2 * (((turbine_data['performance']['rated_rot_speed'] * self.rotor_radius) / turbine_data['performance']['rated_wind_speed']) ** 3)) * 1.225 * np.pi * (self.rotor_radius ** 5) * turbine_data['performance']['Cp_opt']
         # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
         self.K = 2680752.3292693296
+        # FIXME: This is just a random constant
+        self.brake_torque = 1E6
         self.GRAV_CONST = 9.81  # m/s^2
         self.AIR_DENSITY = 1.225  # kg/m^3
         # FIXME: This should also be defined in the input file
@@ -569,6 +572,9 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         
         """
 
+        #: Check if the turbine is active
+        if self.operational_mode == 'stopped':
+            return 0
         #: Extract the Cp curve
         if "Cp_tb_values" in self.turbine_data["performance"]["Cp_curve"]:
             raise NotImplementedError("Cp calculation based on Cp lookup table not implemented yet")
@@ -629,19 +635,43 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                     T_g = self.K * (self.omega ** 2)
                 case _:
                     raise ValueError(f"Unsupported controller mode '{self.gen_torque_controller_mode}'")
+            #: Check if there are any shutdown events
+            match self.operational_mode:
+                case 'power_production':
+                    T_brake = 0
+                case 'shutting_down':
+                    if self.omega == 0:
+                        self.operational_mode = 'stopped'
+                        return 0
+                    T_brake = self.brake_torque
+                    # FIXME: This is kind of a weird hack... but makes the stopping more 'smooth'
+                    T_a = np.tanh(0.1 * self.omega) * T_a
+                    # TEMP
+                    #
+                    print(f"Value of omega: {self.omega:.2e}")
+                    print(f"Value of T_a: {T_a:.2e}")
+                    #
+                case 'stopped':
+                    pass  # NOTE: Should have been caught at the top of this method
+                case 'starting_up':
+                    raise NotImplementedError("Starting up mode not implemented yet")
+                case _:
+                    raise ValueError(f"Unsupported operational mode '{self.operational_mode}'")
             #: Calculate the rotor acceleration
-            omega_dot_t = (T_a - T_g) / self.inertia
+            omega_dot_t = (T_a - T_g - T_brake) / self.inertia
             #: Calculate the power output
             power = T_g * self.generator_efficiency * self.omega  # Power output in Watts
             #: Calculate the new rotor speed
             self.omega = self.omega + omega_dot_t * self.dt
+            #: Make sure the rotor speed does not go below zero
+            # FIXME: Is this really a good way to handle this?
+            self.omega = max(0, self.omega)
             #: Calculate the new azimuth angle
             # FIXME: Do we actually wan't to update that here? Probably not, right? Maybe just at either the very beginning, the first function call, or the very end one?
             self.azimuth += self.omega * self.dt
             self.azimuth %= 2 * np.pi  # Keep the azimuth angle between 0 and 2pi
         else:
-            raise Exception("The power calculation method %s is unkown. Try cp-u lut, cp-bpa-tsr, axial induction "
-                            "instead." % self.power_calc_method)
+            raise Exception(f"The power calculation method {self.power_calc_method} is unkown. Try cp-u lut, cp-bpa-tsr, axial induction instead.")
         return power
     
     def calc_loads(self, vis_tile: Callable[[tuple[float, float, float]], float], int_mode: Literal['scipy', 'riemann'] = 'riemann', nint_points: int = 100) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -43,6 +43,11 @@ import off.off as off
 import off.off_interface as offi
 import time
 
+# ====== BART ======
+from typing import Literal
+from utils import convert
+# ====== BART ======
+
 def main():
 
     # Create an interface object
@@ -59,8 +64,9 @@ def main():
     # run_example_bart_wt_dynamics
     # run_3T_wt_dynamics_loads
     # run_schkortleben
+    # run_schkortleben_shutdown
     # FIXME: I think the trouble is actually with the tilt!! That's why we see the chattering in the moments. Ohh shit... no the tilt is actually 0 degrees so this doesn't explain it...
-    input_file_name = 'run_schkortleben'  # NOTE: Without .yaml
+    input_file_name = 'run_schkortleben_shutdown'  # NOTE: Without .yaml
 
     # ====== BART ======
 
@@ -160,6 +166,18 @@ def main():
     yaw_angles = [control_applied.loc[control_applied['t_idx'] == idx, 'yaw'] for idx in range(n_wt)]
     turbine_orientation = [control_applied.loc[control_applied['t_idx'] == idx, 'orientation'] for idx in range(n_wt)]
 
+    # Extract the rotor speed
+    try:
+        rotor_speed = [measurements.loc[measurements['t_idx'] == idx, 'omega'] for idx in range(n_wt)]
+    except KeyError:
+        rotor_speed = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
+
+    # Extract the operational modes
+    try:
+        operational_modes = [measurements.loc[measurements['t_idx'] == idx, 'operational_mode'].values for idx in range(n_wt)]
+    except KeyError:
+        operational_modes = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
+
     # Extract the loads on each turbine
     try:
         flapwise_bending_moment = [[measurements.loc[measurements['t_idx'] == idx, f'flapwise_bending_moment_blade_{blade_idx + 1}'] for blade_idx in range(3)] for idx in range(n_wt)]
@@ -243,6 +261,23 @@ def main():
     ax_orientation.legend(loc='upper left', ncols=n_wt)
     ax_status.set_xlabel(r"Time $t$ (in s)")
     fig_control.suptitle("Control of each turbine")
+    # Plot the operational mode
+    mode_mapping = {
+        'power_production': 1,
+        'shutting_down': 2, 
+        'starting_up': 3,
+        'stopped': 4
+    }
+    for idx in range(n_wt):
+        mode_values = []
+        for mode in operational_modes[idx]:
+            mode_values.append(mode_mapping.get(mode, np.nan))
+        ax_status.plot(t_range, mode_values, color=col_vals[idx % len(col_vals)], label=f'Turbine {idx:02d}', linewidth=2, drawstyle='steps-post')
+    ax_status.set_ylabel('Operational Mode')
+    ax_status.set_yticks([1, 2, 3, 4])
+    ax_status.set_yticklabels(['Power Production', 'Shutting Down', 'Starting Up', 'Stopped'])
+    ax_status.legend(loc='upper left', ncols=n_wt)
+    ax_status.grid(True, alpha=0.3)
 
     # Plot the local wind direction, speed, and TI over time
     fig_local, (ax_local_wd, ax_local_ws, ax_local_ti) = plt.subplots(3, 1)
@@ -265,54 +300,68 @@ def main():
     ax_thrust_coeffs_eff.set_xlabel(r"Time $t$ (in s)")
     fig_power_thrust_eff.suptitle(r"Effective $C_{\mathrm{P}}$ and $C_{\mathrm{T}}$ values")
 
-    # # Plot the loads (OLD CODE - using subplot columns for each turbine)
-    # if flapwise_bending_moment is not None:
-    #     fig_loads, axs_loads = plt.subplots(3, n_wt, sharex=True)
-    #     for wt_idx in range(n_wt):
-    #         for blade_idx in range(3):
-    #             # BUG: If `axs_loads` has only one column, indexing fails; hence the workaround below
-    #             if n_wt == 1:
-    #                 axs_loads[0].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #                 axs_loads[1].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #                 axs_loads[2].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #             else:
-    #                 axs_loads[0, wt_idx].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #                 axs_loads[1, wt_idx].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #                 axs_loads[2, wt_idx].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-    #         if n_wt == 1:
-    #             axs_loads[0].set_title(f'Turbine {wt_idx + 1:02d}')
-    #             axs_loads[0].set_ylabel('Flapwise Bending Moment (in Nm)')
-    #             axs_loads[1].set_ylabel('Edgewise Bending Moment (in Nm)')
-    #             axs_loads[2].set_ylabel('Normal Force (in N)')
-    #             axs_loads[2].set_xlabel(r"Time $t$ (in s)")
-    #             axs_loads[0].legend(loc='upper left', ncols=1)
-    #         else:
-    #             axs_loads[0, wt_idx].set_title(f'Turbine {wt_idx:02d}')
-    #             axs_loads[0, wt_idx].set_ylabel('Flapwise Bending Moment (in Nm)')
-    #             axs_loads[1, wt_idx].set_ylabel('Edgewise Bending Moment (in Nm)')
-    #             axs_loads[2, wt_idx].set_ylabel('Normal Force (in N)')
-    #             axs_loads[2, wt_idx].set_xlabel(r"Time $t$ (in s)")
-    #             axs_loads[0, wt_idx].legend(loc='upper left', ncols=1)
-    #     fig_loads.suptitle("Loads on each turbine")
-    # else:
-    #     fig_loads = None
+    # Set the options for load plotting
+    plot_loads: Literal['seperate_plots', 'subplots'] = 'seperate_plots'
 
-    # Plot the loads - NEW CODE: Separate figure with 3 subplots for each wind turbine
-    if flapwise_bending_moment is not None:
-        for wt_idx in range(n_wt):
-            fig_loads, (ax_flapwise, ax_edgewise, ax_normal) = plt.subplots(3, 1, sharex=True)
-            for blade_idx in range(3):
-                ax_flapwise.plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                ax_edgewise.plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-                ax_normal.plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
-            ax_flapwise.set_ylabel('Flapwise Bending Moment (in Nm)')
-            ax_edgewise.set_ylabel('Edgewise Bending Moment (in Nm)')
-            ax_normal.set_ylabel('Normal Force (in N)')
-            ax_normal.set_xlabel(r"Time $t$ (in s)")
-            ax_flapwise.legend(loc='upper left', ncols=1)
-            fig_loads.suptitle(f"Loads on Turbine {wt_idx:02d}")
-    else:
-        fig_loads = None
+    match plot_loads:
+        case 'subplots':
+            if flapwise_bending_moment is not None:
+                fig_loads, axs_loads = plt.subplots(3, n_wt, sharex=True)
+                for wt_idx in range(n_wt):
+                    for blade_idx in range(3):
+                        # BUG: If `axs_loads` has only one column, indexing fails; hence the workaround below
+                        if n_wt == 1:
+                            axs_loads[0].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                            axs_loads[1].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                            axs_loads[2].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                        else:
+                            axs_loads[0, wt_idx].plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                            axs_loads[1, wt_idx].plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                            axs_loads[2, wt_idx].plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    if n_wt == 1:
+                        axs_loads[0].set_title(f'Turbine {wt_idx + 1:02d}')
+                        axs_loads[0].set_ylabel('Flapwise Bending Moment (in Nm)')
+                        axs_loads[1].set_ylabel('Edgewise Bending Moment (in Nm)')
+                        axs_loads[2].set_ylabel('Normal Force (in N)')
+                        axs_loads[2].set_xlabel(r"Time $t$ (in s)")
+                        axs_loads[0].legend(loc='upper left', ncols=1)
+                    else:
+                        axs_loads[0, wt_idx].set_title(f'Turbine {wt_idx:02d}')
+                        axs_loads[0, wt_idx].set_ylabel('Flapwise Bending Moment (in Nm)')
+                        axs_loads[1, wt_idx].set_ylabel('Edgewise Bending Moment (in Nm)')
+                        axs_loads[2, wt_idx].set_ylabel('Normal Force (in N)')
+                        axs_loads[2, wt_idx].set_xlabel(r"Time $t$ (in s)")
+                        axs_loads[0, wt_idx].legend(loc='upper left', ncols=1)
+                fig_loads.suptitle("Loads on each turbine")
+            else:
+                fig_loads = None
+        case 'seperate_plots':
+            if flapwise_bending_moment is not None:
+                for wt_idx in range(n_wt):
+                    fig_loads, (ax_flapwise, ax_edgewise, ax_normal) = plt.subplots(3, 1, sharex=True)
+                    for blade_idx in range(3):
+                        ax_flapwise.plot(t_range, flapwise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                        ax_edgewise.plot(t_range, edgewise_bending_moment[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                        ax_normal.plot(t_range, normal_force[wt_idx].iloc[:, blade_idx], color=col_vals[blade_idx], label=f'Blade {blade_idx + 1}')
+                    ax_flapwise.set_ylabel('Flapwise Bending Moment (in Nm)')
+                    ax_edgewise.set_ylabel('Edgewise Bending Moment (in Nm)')
+                    ax_normal.set_ylabel('Normal Force (in N)')
+                    ax_normal.set_xlabel(r"Time $t$ (in s)")
+                    ax_flapwise.legend(loc='upper left', ncols=1)
+                    fig_loads.suptitle(f"Loads on Turbine {wt_idx:02d}")
+            else:
+                fig_loads = None
+        case _:
+            raise ValueError(f"Invalid option for plot_loads: {plot_loads}")
+
+    # Plot the rotor speeds
+    fig_rotor_speed, ax_rotor_speed = plt.subplots()
+    for idx in range(n_wt):
+        ax_rotor_speed.plot(t_range, convert(rotor_speed[idx], 'rad/s', 'RPM'), color=col_vals[idx % len(col_vals)], label=f'WT{idx:02d}')
+    ax_rotor_speed.set_ylabel(r"Rotor speed $\omega$ (in RPM)")
+    ax_rotor_speed.legend(loc='upper left', ncols=n_wt)
+    ax_rotor_speed.set_xlabel(r"Time $t$ (in s)")
+    fig_rotor_speed.suptitle("Rotor speeds")
 
     # Plot the power
     if plot_power_seperate:

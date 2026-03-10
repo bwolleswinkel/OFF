@@ -32,6 +32,10 @@ import off.wake_solver as ws
 from off.logger import CONSOLE_LVL, FILE_LVL, Formatter, _logger_add
 import shutil
 
+# ====== BART ======
+from off.turbine import TurbineSimpleDriveTrain
+# ====== BART ======
+
 from off import __file__ as OFF_PATH
 import datetime
 
@@ -47,13 +51,14 @@ class OFF:
     settings_vis = dict()
 
     def __init__(self, wind_farm: wfm.WindFarm, settings_sim: dict, settings_wke: dict, settings_sol: dict,
-                 settings_cor: dict, settings_ctr: dict, settings_turbine: dict, vis: dict):
+                 settings_cor: dict, settings_ctr: dict, settings_turbine: dict, settings_events: dict, vis: dict):
         self.wind_farm = wind_farm
         self.settings_sim = settings_sim
         self.settings_vis = vis
         # ====== BART ======
         self.settings_cor = settings_cor
         self.settings_turbine = settings_turbine
+        self.settings_events = settings_events
         # ====== BART ======
         self.__dir_init__( settings_sim )
         self.__logger_init__( settings_sim )
@@ -280,6 +285,18 @@ class OFF:
                 # for turbine 'tur': Run wake solver and retrieve measurements from the wake model
                 uv_r[turb_idx, :], uv_op, m_tmp = self.wake_solver.get_measurements(turb_idx, self.wind_farm)
 
+                # ====== BART ======
+                # Update operational mode based on events
+                if self.settings_events is not None:
+                    if self.settings_events["settings"]["event_type"] == "shutdown":
+                        for event_idx, event_t in enumerate(self.settings_events["settings"]["shutdown_t"]):
+                            if t >= event_t and turb_idx in self.settings_events["settings"]["shutdown_indices"][event_idx]:
+                                if tur.operational_mode == 'power_production':
+                                    tur.operational_mode = 'shutting_down'
+                else:
+                    pass
+                # ====== BART ======
+
                 # Calculate the power generated
                 pow_t[turb_idx, :] = tur.calc_power(util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]))
                 m_tmp['power_OFF'] = pow_t[turb_idx, :]
@@ -296,6 +313,16 @@ class OFF:
                 m_tmp.t_idx = turb_idx
                 m_tmp['time'] = t
                 # ====== BART ======
+                # Save the operational mode in the measurements
+                if isinstance(tur, TurbineSimpleDriveTrain):
+                    m_tmp['operational_mode'] = tur.operational_mode
+                # Save the rotor speed in the measurements
+                if isinstance(tur, TurbineSimpleDriveTrain):
+                    m_tmp['omega'] = tur.omega
+                # Save the blade azimuth in the measurements
+                if isinstance(tur, TurbineSimpleDriveTrain):
+                    for blade_idx in range(3):
+                        m_tmp[f'blade_{blade_idx + 1}_azimuth'] = tur.azimuth + blade_idx * 2 * np.pi / 3
                 # Add loads to data
                 if 'dynamics' in self.settings_turbine and 'loads' in self.settings_turbine['dynamics'] and self.settings_turbine['dynamics']['loads'] == 'first_principles':
                     for blade_idx in range(flapwise_bending_moment_t.shape[0]):

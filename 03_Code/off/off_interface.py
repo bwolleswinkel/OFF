@@ -89,6 +89,7 @@ class OFFInterface:
         
         # FIXME: Move this to the `_run_yaml_to_dict` method
         settings_turbine = sim_info['turbine']
+        settings_events = sim_info['events'] if 'events' in sim_info else None
 
         # ====== BART ======
 
@@ -103,7 +104,7 @@ class OFFInterface:
         vis = sim_info["vis"]
 
         # Create OFF simulation object
-        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, settings_turbine, vis)
+        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, settings_turbine, settings_events, vis)
 
         # TODO init based on sim_info inputs & used ambient state model / turbine state model
         self.off_sim.init_sim(
