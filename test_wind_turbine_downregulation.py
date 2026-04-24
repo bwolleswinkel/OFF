@@ -42,7 +42,7 @@ K_I_pitch_greedy = 0  # Integral gain for pitch control in greedy LIO
 anti_windup_window = None  # Number of time steps for anti-windup integral action (in time steps)
 
 # Set the local wind speed 
-# u_sim = [[0, 50, 50.1,], [11, 11, 4.0]]  # NOTE: The first list is time points, the second list is wind speeds (in m/s) at those time points
+# u_sim = [[0, 10, 90.1,], [11, 11, 4.0]]  # NOTE: The first list is time points, the second list is wind speeds (in m/s) at those time points
 u_sim = [[0], [16]]
 
 # Set the blade pitch
@@ -52,7 +52,7 @@ pitch_mode = 'lio_downreg'  # 'zero' | 'lookup_table' | 'lookup_table_rotor_spee
 EXP_FACTOR = 5E1  # 1E2, very good! 5E1, even better!
 
 # Set the downregulation mode (if applicable)
-downreg_mode: Literal['max_omega', 'const_omega', 'constant_tsr', 'min_Ct'] = 'min_Ct'
+downreg_mode: Literal['max_omega', 'const_omega', 'constant_tsr', 'min_Ct'] = 'constant_tsr'
 P_derated: float = 0.15  # NOTE: If P_derated ∈ (0, 1), it assumes a fraction of rated power. If P_derated > 1, it assumes derated power in Watts.
 
 # Set the initial rotor speed
@@ -84,7 +84,7 @@ match wt_model:
         u_rated = input_file['performance']['rated_wind_speed']
         rated_power = input_file['performance']['rated_power']
         omega_rated = convert(input_file['performance']['rated_rot_speed'], 'RPM', 'rad/s')
-        rated_gen_tor_torque = input_file['performance']['rated_gen_tor_torque'] 
+        rated_gen_torque = input_file['performance']['rated_gen_tor_torque'] 
         blade_pitch, blade_pitch_u = input_file['performance']['pitch']['pitch_curve']['pitch_u_values'], input_file['performance']['pitch']['pitch_curve']['pitch_u_wind_speeds']
         # FIXME: This value is from "On the Analysis and Synthesis of Wind Turbine Side–Side Tower Load Control via Demodulation", Pamososuryo et al. (2024), but I don't know if it is correct
         inertia = 4.0802E7  # kg*m^2
@@ -107,14 +107,15 @@ match wt_model:
         tsr_opt = np.nan
     case _:
         raise ValueError(f"Unsupported wind turbine model '{wt_model}'")
-    
+
+
 # Load the prescribed performance curves
 from floris import FlorisModel
 fmodel = FlorisModel('02_Examples_and_Cases/00_Inputs/01_FLORIS/gch.yaml')
 fmodel.set(turbine_type=['nrel_5MW'])
 u, P_u = fmodel.core.farm.turbine_map[0].power_thrust_table['wind_speed'], fmodel.core.farm.turbine_map[0].power_thrust_table['power'] * 1E3  # Convert to W
 Pu_prescribed_interp = lambda lbd_u: np.nan_to_num(np.interp(lbd_u, u, P_u))
-    
+
 # Load the Cp curve depending on the power mode
 match power_mode:
     case 'wind_speed':
@@ -305,7 +306,7 @@ while t < T_sim:
                     else:
                         # FIXME: It appear the rated generator torque should really be kNm, otherwise it seem to make no sense... NO, there is a factor 100 difference, unexplained
                         # T_g = rated_gen_tor_torque
-                        T_g = rated_gen_tor_torque * 1E2
+                        T_g = rated_gen_torque * 1E2
                 case 'lio_downreg':
                     #: Calculate the rotor setpoint
                     if u_t < u_derated:
@@ -381,7 +382,7 @@ while t < T_sim:
                     if u_t < u_rated:
                         T_g = K_P_gen * (omega_t - (tsr_opt * u_t) / rotor_radius)
                     else:
-                        T_g = rated_gen_tor_torque
+                        T_g = rated_gen_torque
                 case _:
                     raise ValueError(f"Unsupported controller mode '{controller_mode}'")
             #: Calculate the rotor acceleration, generator acceleration, decoupling angle acceleration, and blade pitch angle acceleration

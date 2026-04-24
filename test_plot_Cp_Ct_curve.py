@@ -40,6 +40,10 @@ u = fmodel.core.farm.turbine_map[0].power_thrust_table['wind_speed']
 Ct_u = fmodel.core.farm.turbine_map[0].power_thrust_table['thrust_coefficient']
 P_u = fmodel.core.farm.turbine_map[0].power_thrust_table['power'] * 1E3  # Convert to W
 
+# TEMP
+print(u.tolist())
+print(P_u.tolist())
+
 # Set some parameters
 air_density, rotor_radius = 1.225, fmodel.core.farm.turbine_map[0].rotor_radius
 generator_efficiency = 0.994

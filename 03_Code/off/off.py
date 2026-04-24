@@ -33,7 +33,7 @@ from off.logger import CONSOLE_LVL, FILE_LVL, Formatter, _logger_add
 import shutil
 
 # ====== BART ======
-from off.turbine import TurbineSimpleDriveTrain
+from off.turbine import TurbineSimpleDriveTrain, TurbineSimpleDriveTrainDownregulation
 # ====== BART ======
 
 from off import __file__ as OFF_PATH
@@ -51,15 +51,17 @@ class OFF:
     settings_vis = dict()
 
     def __init__(self, wind_farm: wfm.WindFarm, settings_sim: dict, settings_wke: dict, settings_sol: dict,
-                 settings_cor: dict, settings_ctr: dict, settings_turbine: dict, settings_events: dict, vis: dict):
+                 settings_cor: dict, settings_ctr: dict, settings_ctr_all: dict, settings_turbine: dict, settings_events: dict, vis: dict):
         self.wind_farm = wind_farm
         self.settings_sim = settings_sim
         self.settings_vis = vis
+
         # ====== BART ======
         self.settings_cor = settings_cor
         self.settings_turbine = settings_turbine
         self.settings_events = settings_events
         # ====== BART ======
+
         self.__dir_init__( settings_sim )
         self.__logger_init__( settings_sim )
         settings_wke['sim_dir'] = self.root_dir
@@ -74,13 +76,11 @@ class OFF:
         self.wake_solver = ws.TWFSolver(settings_wke, settings_sol, vis)
 
         # ====== BART ======
-
         # ====== WIND TURBINE DYNAMICS ======
         try:
             self.wt_dynamics_model = settings_turbine['dynamics']['model']
         except KeyError:
             pass
-
         # ====== BART ======
 
         # =========== Controller ===========
@@ -98,6 +98,18 @@ class OFF:
             self.controller = ctr.DeadbandYawSteeringLuTController(settings_ctr, self.settings_sim['time step'], self.wind_farm.nT)
         else:
             raise Warning("Controller %s is undefined!" % settings_ctr["ctl"])
+        
+        # ====== BART ======
+        # ====== POWER CONTROLLER ======
+        if 'power_controller' in settings_ctr_all:
+            match settings_ctr_all['power_controller']['settings']['type']:
+                case 'lio':
+                    self.power_controller = ctr.DownregulationControllerLio(settings_ctr_all['power_controller']['settings']['strategy'], {'power_factor': settings_ctr_all['power_controller']['settings']['power_factor'], 'power_t': settings_ctr_all['power_controller']['settings']['power_t']})
+                case _:
+                    raise ValueError(f"Power controller {settings_ctr_all['power_controller']['settings']['type']} is not recognized.")
+        else:
+            self.power_controller = None
+        # ====== BART ======
 
         # =========== Corrector ===========
         if settings_cor['ambient']: 
@@ -122,11 +134,9 @@ class OFF:
         integer = int(current_time.strftime("%Y%m%d%H%M%S%f"))
 
         # ====== BART ======
-
         # Add spacing to the run id
         run_id_str = str(integer)
         run_id_str = 'D' + run_id_str[:4] + '_' + run_id_str[4:6] + '_' + run_id_str[6:8] + '_T' + run_id_str[8:10] + '_' + run_id_str[10:12] + '_' + run_id_str[12:14]
-
         # ====== BART ======
 
         return integer, run_id_str
@@ -312,6 +322,7 @@ class OFF:
                 # Add turbine index & timestamp to data
                 m_tmp.t_idx = turb_idx
                 m_tmp['time'] = t
+
                 # ====== BART ======
                 # Save the operational mode in the measurements
                 if isinstance(tur, TurbineSimpleDriveTrain):
@@ -331,6 +342,21 @@ class OFF:
                         m_tmp[f'normal_force_blade_{blade_idx + 1}'] = normal_force_t[blade_idx, turb_idx]
                 else:
                     pass
+                # ====== BART ======
+
+                # ====== BART ======
+                # Save the rotor speed and rotor speed setpoint in the measurements
+                if isinstance(tur, TurbineSimpleDriveTrainDownregulation):
+                    # Save the rotor speed setpoint
+                    m_tmp['omega_setpoint'] = self.power_controller.rotor_setpoint[turb_idx]
+                    # Save the power setpoint in the measurements
+                    m_tmp['power_setpoint'] = self.power_controller.power_setpoint[turb_idx]
+                    # Save the derated wind speed in the measurements
+                    m_tmp['wind_speed_derated'] = self.power_controller.wind_speed_derated[turb_idx]
+                    # Save the generator torque setpoint in the measurements
+                    m_tmp['T_g'] = self.power_controller.T_g[turb_idx]
+                    # Save the pitch angle setpoint in the measurements
+                    m_tmp['pitch'] = np.rad2deg(self.power_controller.pitch[turb_idx])  # In degrees
                 # ====== BART ======
 
                 # Append turbine measurements to general measurement data
@@ -382,6 +408,13 @@ class OFF:
                 self.controller(tur, turb_idx, t)
                 lg.debug("Turbine %s states after control-> yaw = %s deg, ax ind = %s." %
                          (turb_idx, tur.turbine_states.get_current_yaw(), tur.turbine_states.get_current_ax_ind()))
+            
+            # ====== BART ======
+            # /////////////////////// POWER CONTROL ///////////////////////
+            if self.power_controller is not None:
+                for turb_idx, tur in enumerate(self.wind_farm.turbines):
+                    self.power_controller(tur, turb_idx, t, util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]))
+            # ====== BART ======
 
             # ///////////////////// STORE ///////////////////////
             if (self.settings_vis["debug"]["effective_wf_tile"] and

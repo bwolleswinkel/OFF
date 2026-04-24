@@ -1,0 +1,64 @@
+float_val: 1.0
+
+vector_val_list: [2.0, 3.0, 4.0]
+
+vector_val_dashes:
+  - 2.0
+  - 3.0
+  - 4.0
+
+timeseries_two_lists:
+  - [4.0, 5.0, 6.0]
+  - [0, 10, 20]
+
+timeseries_two_dashes:
+  - 4.0
+  - 5.0
+  - 6.0
+timeseries_two_dashes_t:
+  - 0
+  - 10
+  - 20
+
+timeseries_pairs:
+  - [4.0, 0]
+  - [5.0, 10]
+  - [6.0, 20]
+
+timeseries_nested: [
+  [4.0, 5.0, 6.0],
+  [0, 10, 20]
+]
+
+timeseries_vector:
+  - [4.0, 0.1]
+  - [5.0, 0.2]
+  - [6.0, 0.3]
+timeseries_vector_t:
+  - 0
+  - 10
+  - 20
+
+timeseries_vector_pairs:
+  - [0, [4.0, 0.1]]
+  - [10, [5.0, 0.2]]
+  - [20, [6.0, 0.3]]
+
+timeseries_vector_two_lists:
+  - [[4.0, 0.1],
+     [5.0, 0.2],
+     [6.0, 0.3]]
+  - [0, 10, 20]
+
+matrix_rows_dashes:
+  - [1.0, 2.0, 3.0]
+  - [4.0, 5.0, 6.0]
+  - [7.0, 8.0, 9.0]
+  - [10.0, 11.0, 12.0]
+
+matrix_nested: [
+  [1.0, 2.0, 3.0],
+  [4.0, 5.0, 6.0],
+  [7.0, 8.0, 9.0],
+  [10.0, 11.0, 12.0]
+]

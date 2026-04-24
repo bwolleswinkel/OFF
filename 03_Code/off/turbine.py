@@ -18,7 +18,7 @@
 
 import warnings
 # ====== BART ======
-from typing import Callable, Literal
+from typing import Callable, Literal, Optional
 import scipy as sp
 # ====== BART ======
 
@@ -521,7 +521,7 @@ class HAWT_ADM(Turbine):
 class TurbineSimpleDriveTrain(HAWT_ADM):
     """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia."""
 
-    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None):
+    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None, init_rotor_speed: Optional[float] = None):
         super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data)
         #: Add the dynamic states
         # FIXME: These need to be able to be passed to the turbine
@@ -534,7 +534,10 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             # NOTE: Currently, this is expected to be a lambda expression as a string in the input `.yaml` file, of the form 'lambda fraction: ...'
             self.blade_chord: Callable[[float], float] = eval(turbine_data['blade_chord'])
         # FIXME: This is hard-coded now... should really be passed as an argument
-        self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
+        if init_rotor_speed is not None:
+            self.omega = convert(init_rotor_speed, 'RPM', 'rad/s')  # In rad/s
+        else:
+            self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
         self.pitch = 0
         self.operational_mode: Literal['power_production', 'shutting_down', 'stopped', 'starting_up'] = 'power_production'
         self.turbine_data = turbine_data
@@ -798,7 +801,123 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         #: Return the results
         return flapwise_bending_moment, edgewise_bending_moment, normal_force
         
-    
+
+# FIXME: I don't know if this is the best/correct way to implement the downregulation wind turbine
+class TurbineSimpleDriveTrainDownregulation(TurbineSimpleDriveTrain):
+    """A simple drive train turbine model for downwind turbines, which extends the TurbineSimpleDriveTrain model."""
+
+    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None, init_rotor_speed: Optional[float] = None):
+        super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model, init_rotor_speed)
+        # FIXME: This is also a temporary overwrite, no idea if its correct
+        self.inertia: float = float(turbine_data['inertia'])
+        self.rated_power: float = turbine_data['performance']['rated_power']  # in W
+        self.rated_rotor_speed: float = turbine_data['performance']['rated_rotor_speed']  # in RPM
+        self.opt_Cp: float = 0.482  # FIXME: Currently hardcoded, but should be passed as an argument
+        self.opt_tsr: float = turbine_data['TSR']  # Optimal tip speed ratio for power production
+        # FIXME: Right now, we load this externally; of course, not what we want to do
+        #
+        with open('02_Examples_and_Cases/00_Inputs/00_OFF/05_Turbine/NREL5MW/Cp_Ct_NREL5MW_nrel.csv', 'r') as f:
+            # Load full matrix for 2D interpolation
+            full_data = np.loadtxt(f, delimiter=';', skiprows=1)
+            # You'll need to adjust these indices based on your actual CSV structure
+            self.tsr_values = np.unique(full_data[:, 2])
+            self.pitch_values = np.unique(full_data[:, 1])
+            # Reshape Cp values into 2D matrix (n_tsr x n_pitch)
+            self.Cp_matrix = full_data[:, 3].reshape(len(self.pitch_values), len(self.tsr_values)).T
+        #
+        self.T_g: float = 1E6  # Generator torque, initialized to 1E6
+        self.pitch: float = 0  # Blade pitch angle, initialized to zero
+        self.power_setpoint: Optional[float] = None  # Power setpoint for downregulation, initialized to None (no downregulation)
+
+    def calc_power(self, wind_speed, air_den=1.225) -> float:
+        """Calculate the power based on turbine, ambient and OP states, and the current turbine dynamics
+
+        Parameters
+        ----------
+        wind_speed : float
+            Wind speed (in m/s)
+        air_den : float
+            air density (in kg/m^3)
+
+        Returns
+        -------
+        float :
+            Power generated (in W)
+        
+        """
+        #: Check if downregulation is active
+        if self.power_setpoint is None:
+            return super().calc_power(wind_speed, air_den)
+        else:
+            #: Extract the Cp curve
+            if "Cp_tb_values" in self.turbine_data["performance"]["Cp_curve"]:
+                raise NotImplementedError("Cp calculation based on Cp lookup table not implemented yet")
+            else:
+                #: Give a warning that blade dynamics are not taken into account
+                try: 
+                    if not self.warn_raised:
+                        warnings.warn(f"No Cp lookup table provided for the turbine. Using a linear interpolation of the Cp curve based on wind speed.", UserWarning, stacklevel=4)
+                        self.warn_raised = True
+                except AttributeError:
+                    self.warn_raised = False
+                #: Create an interpolation of the Cp curve based on the wind speed
+                # NOTE: This MUST be set to 'lookup_table', otherwise the blade pitch will not have any effect
+                Cp_power_mode = 'lookup_table'
+                from scipy.interpolate import RegularGridInterpolator
+                _Cp_interp = RegularGridInterpolator((self.tsr_values, self.pitch_values), self.Cp_matrix, 
+                                                   method='linear', bounds_error=False, fill_value=0)
+                # Create a wrapper function for easier calling with proper input formatting
+                Cp_interp = lambda tsr, pitch: _Cp_interp(np.array([[float(tsr), float(pitch)]]))[0] 
+
+            if self.yaw_power_coeff == "pP":
+                yaw = np.deg2rad(self.turbine_states.get_current_yaw())
+                yaw_coef = np.cos(yaw) ** self.Cp_pP
+            elif self.yaw_power_coeff == "none":
+                yaw_coef = 1.0
+            else:
+                raise Exception("Only cos(yaw) ** pP yaw coefficient supported (or none)")
+            
+            if self.power_calc_method == "axial induction":
+                axi = self.turbine_states.get_current_ax_ind()
+                cp = 4 * axi * (1 - axi) ** 2
+                power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+            elif self.power_calc_method == "cp-u lut":
+                cp = np.interp(wind_speed, self.Cp_u_wind_speeds, self.Cp_u_values)
+                power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+            elif self.power_calc_method == "cp-bpa-tsr":
+                cp = 0
+                power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
+                raise Exception("Cp calculation based on cp-bpa-tsr not implemented yet.")
+            elif self.power_calc_method == 'simple_drive_train':
+                #: Calculate the tip speed ratio
+                tsr_t = (self.omega * self.rotor_radius) / wind_speed if wind_speed > 0 else 0
+                #: Calculate the Cp coefficient
+                match Cp_power_mode:
+                    case 'wind_speed':
+                        args = (wind_speed,)
+                    case 'lookup_table':
+                        args = (tsr_t, np.rad2deg(self.pitch))  # NOTE: Expect the pitch to be in degrees
+                    case _:
+                        raise ValueError(f"Unsupported Cp power mode '{Cp_power_mode}'")
+                Cp_t = Cp_interp(*args)
+                #: Calculate the aerodynamic torque
+                # FIXME: Sometimes this can be np.nan, which is problematic...
+                if np.isnan(Cp_t):
+                    warnings.warn(f"Cp value is NaN, tsr {tsr_t:.2f}, pitch {convert(self.pitch, 'rad', 'deg'):.2f}, using 0 instead")
+                    Cp_t = 0
+                T_a = 1 / (2 * self.omega) * self.AIR_DENSITY * np.pi * (self.rotor_radius ** 2) * Cp_t * (wind_speed ** 3)
+                #: Calculate the rotor acceleration
+                omega_dot_t = (T_a - self.T_g) / self.inertia
+                #: Calculate the power output
+                power = self.T_g * self.generator_efficiency * self.omega  # Power output in Watts
+                #: Calculate the new rotor speed
+                self.omega = self.omega + omega_dot_t * self.dt
+                #: Calculate the new azimuth angle
+                # FIXME: Do we actually wan't to update that here? Probably not, right? Maybe just at either the very beginning, the first function call, or the very end one?
+                self.azimuth += self.omega * self.dt
+                self.azimuth %= 2 * np.pi  # Keep the azimuth angle between 0 and 2pi
+        return power
+        
 # ====== BART ======
 
 

@@ -65,8 +65,10 @@ def main():
     # run_3T_wt_dynamics_loads
     # run_schkortleben
     # run_schkortleben_shutdown
-    # FIXME: I think the trouble is actually with the tilt!! That's why we see the chattering in the moments. Ohh shit... no the tilt is actually 0 degrees so this doesn't explain it...
-    input_file_name = 'run_schkortleben_shutdown'  # NOTE: Without .yaml
+    # run_1T_ss_wt_dynamics_downregulation
+    # run_1T_downregulation_simulink
+    # run_schkortleben_downregulation
+    input_file_name = 'run_schkortleben_downregulation'  # NOTE: Without .yaml
 
     # ====== BART ======
 
@@ -154,6 +156,12 @@ def main():
     # Extract the power
     power = [measurements.loc[measurements['t_idx'] == idx, 'power_OFF'] for idx in range(n_wt)]
 
+    # Extract the power setpoints
+    try:
+        power_setpoints = [measurements.loc[measurements['t_idx'] == idx, 'power_setpoint'] for idx in range(n_wt)]
+    except KeyError:
+        power_setpoints = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
+
     # Extract the C_P and C_T curver
     C_P = []
     C_T = [measurements.loc[measurements['t_idx'] == idx, 'Ct_FLORIS'] for idx in range(n_wt)]
@@ -172,11 +180,25 @@ def main():
     except KeyError:
         rotor_speed = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
 
+    # Extract the rotor speed setpoint
+    try:
+        rotor_speed_setpoint = [measurements.loc[measurements['t_idx'] == idx, 'omega_setpoint'] for idx in range(n_wt)]
+    except KeyError:
+        rotor_speed_setpoint = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
+
     # Extract the operational modes
     try:
         operational_modes = [measurements.loc[measurements['t_idx'] == idx, 'operational_mode'].values for idx in range(n_wt)]
     except KeyError:
         operational_modes = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
+
+    # Extract the generator torque and pitch angle
+    try:
+        generator_torque = [measurements.loc[measurements['t_idx'] == idx, 'T_g'] for idx in range(n_wt)]
+        pitch_angle = [measurements.loc[measurements['t_idx'] == idx, 'pitch'] for idx in range(n_wt)]
+    except KeyError:
+        generator_torque = None
+        pitch_angle = None
 
     # Extract the loads on each turbine
     try:
@@ -247,8 +269,8 @@ def main():
     # # FIXME: Comment this out, as this does not have the correct values
     # #
     # for idx in range(n_wt):
-    #     ax_yaw.plot([0, 200, 800, 1200], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250, 250], [270, 270, 270, 270], [270, 270, 270, 270]]) if elem == idx][0], '--', color=col_vals[idx], drawstyle='steps-post', alpha=0.5)
-    #     ax_yaw.plot([0, 200, 800], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250], [270, 270, 270], [270, 270, 270]]) if elem == idx][0], 'o', color=col_vals[idx], drawstyle='steps-post', label=fr"Setpoint $\gamma_{{\mathrm{{ref}},{idx}}}$")
+    #     ax_yaw.plot([0, 200, 800, 1200], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250, 250], [270, 270, 270, 270], [270, 270, 270, 270]]) if elem == idx][0], '--', color=col_vals[idx % len(col_vals)], drawstyle='steps-post', alpha=0.5)
+    #     ax_yaw.plot([0, 200, 800], [[270 - yaw for yaw in yaws] for elem, yaws in enumerate([[270, 260, 250], [270, 270, 270], [270, 270, 270]]) if elem == idx][0], 'o', color=col_vals[idx % len(col_vals)], drawstyle='steps-post', label=fr"Setpoint $\gamma_{{\mathrm{{ref}},{idx}}}$")
     # #
     for idx in range(n_wt):
         ax_yaw.plot(t_range, yaw_angles[idx], color=col_vals[idx % len(col_vals)], label=fr"Actual $\gamma_{idx}$")
@@ -301,9 +323,9 @@ def main():
     fig_power_thrust_eff.suptitle(r"Effective $C_{\mathrm{P}}$ and $C_{\mathrm{T}}$ values")
 
     # Set the options for load plotting
-    plot_loads: Literal['seperate_plots', 'subplots'] = 'seperate_plots'
+    plot_turbine: Literal['seperate_plots', 'subplots'] = 'seperate_plots'
 
-    match plot_loads:
+    match plot_turbine:
         case 'subplots':
             if flapwise_bending_moment is not None:
                 fig_loads, axs_loads = plt.subplots(3, n_wt, sharex=True)
@@ -352,12 +374,51 @@ def main():
             else:
                 fig_loads = None
         case _:
-            raise ValueError(f"Invalid option for plot_loads: {plot_loads}")
+            raise ValueError(f"Invalid option for plot_loads: {plot_turbine}")
+        
+    # Plot the generator torque and pitch angle
+    if generator_torque is not None:
+        match plot_turbine:
+            case 'subplots':
+                fig_control_torque_pitch, axs_control = plt.subplots(2, n_wt, sharex=True)
+                for wt_idx in range(n_wt):
+                    if n_wt == 1:
+                        axs_control[0].plot(t_range, generator_torque[wt_idx], color=col_vals[0], label='Generator Torque')
+                        axs_control[1].plot(t_range, pitch_angle[wt_idx], color=col_vals[1], label='Pitch Angle')
+                        axs_control[0].set_title(f'Turbine {wt_idx:02d}')
+                        axs_control[0].set_ylabel('Generator Torque (in Nm)')
+                        axs_control[1].set_ylabel('Pitch Angle (in °)')
+                        axs_control[1].set_xlabel(r"Time $t$ (in s)")
+                        axs_control[0].legend(loc='upper left')
+                    else:
+                        axs_control[0, wt_idx].plot(t_range, generator_torque[wt_idx], color=col_vals[0], label='Generator Torque')
+                        axs_control[1, wt_idx].plot(t_range, pitch_angle[wt_idx], color=col_vals[1], label='Pitch Angle')
+                        axs_control[0, wt_idx].set_title(f'Turbine {wt_idx:02d}')
+                        axs_control[0, wt_idx].set_ylabel('Generator Torque (in Nm)')
+                        axs_control[1, wt_idx].set_ylabel('Pitch Angle (in °)')
+                        axs_control[1, wt_idx].set_xlabel(r"Time $t$ (in s)")
+                        axs_control[0, wt_idx].legend(loc='upper left')
+                fig_control_torque_pitch.suptitle("Generator torque and pitch angle for each turbine")
+            case 'seperate_plots':
+                for wt_idx in range(n_wt):
+                    fig_control_torque_pitch, (ax_torque, ax_pitch) = plt.subplots(2, 1, sharex=True)
+                    ax_torque.plot(t_range, generator_torque[wt_idx], color=col_vals[0], label='Generator Torque')
+                    ax_pitch.plot(t_range, pitch_angle[wt_idx], color=col_vals[1], label='Pitch Angle')
+                    ax_torque.set_ylabel('Generator Torque (in Nm)')
+                    ax_pitch.set_ylabel('Pitch Angle (in °)')
+                    ax_pitch.set_xlabel(r"Time $t$ (in s)")
+                    ax_torque.legend(loc='upper left')
+                    fig_control_torque_pitch.suptitle(f"Generator torque and pitch angle for Turbine {wt_idx:02d}")
+            case _:
+                raise ValueError(f"Invalid option for plot_turbine: {plot_turbine}")
+    else:
+        fig_control_torque_pitch = None
 
     # Plot the rotor speeds
     fig_rotor_speed, ax_rotor_speed = plt.subplots()
     for idx in range(n_wt):
         ax_rotor_speed.plot(t_range, convert(rotor_speed[idx], 'rad/s', 'RPM'), color=col_vals[idx % len(col_vals)], label=f'WT{idx:02d}')
+        ax_rotor_speed.plot(t_range, convert(rotor_speed_setpoint[idx], 'rad/s', 'RPM'), '--', color=col_vals[idx % len(col_vals)], label=f'WT{idx:02d} setpoint')
     ax_rotor_speed.set_ylabel(r"Rotor speed $\omega$ (in RPM)")
     ax_rotor_speed.legend(loc='upper left', ncols=n_wt)
     ax_rotor_speed.set_xlabel(r"Time $t$ (in s)")
@@ -367,7 +428,8 @@ def main():
     if plot_power_seperate:
         fig_power, ax_power = plt.subplots(n_wt, 1, sharex=True)
         for idx in range(n_wt):
-            ax_power[idx].plot(t_range, power[idx], color=col_vals[idx], label=f'Power {idx:02d}')
+            ax_power[idx].plot(t_range, power[idx], color=col_vals[idx % len(col_vals)], label=f'Power {idx:02d}')
+            ax_power[idx].plot(t_range, power_setpoints[idx], '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
             ax_power[idx].legend(loc='upper left')
             ax_power[idx].set_ylim([0, 1.1 * max(power[idx])])
         ax_power[-1].set_xlabel(r"Time $t$ (in s)")
@@ -376,6 +438,7 @@ def main():
         fig_power, ax_power = plt.subplots()
         for idx in range(n_wt):
             ax_power.plot(t_range, power[idx], label=f'Power {idx:02d}')
+            ax_power.plot(t_range, power_setpoints[idx], '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
         ax_power.set_ylabel('Power (in W)')
         ax_power.legend()
         ax_power.set_xlabel(r"Time $t$ (in s)")

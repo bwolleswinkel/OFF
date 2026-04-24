@@ -86,11 +86,10 @@ class OFFInterface:
         wind_farm = self._run_yaml_to_wind_farm(sim_info)
 
         # ====== BART ======
-        
         # FIXME: Move this to the `_run_yaml_to_dict` method
         settings_turbine = sim_info['turbine']
         settings_events = sim_info['events'] if 'events' in sim_info else None
-
+        settings_ctr_all = sim_info['controller'] if 'controller' in sim_info else None
         # ====== BART ======
 
         # Generate an input file for FLORIS
@@ -104,7 +103,7 @@ class OFFInterface:
         vis = sim_info["vis"]
 
         # Create OFF simulation object
-        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, settings_turbine, settings_events, vis)
+        self.off_sim = off.OFF(wind_farm, settings_sim, settings_wke, settings_sol, settings_cor, settings_ctr, settings_ctr_all, settings_turbine, settings_events, vis)
 
         # TODO init based on sim_info inputs & used ambient state model / turbine state model
         self.off_sim.init_sim(
@@ -299,11 +298,20 @@ class OFFInterface:
                 dist_factor = 1
 
             # ====== BART ======
+            if 'initial' in sim_info:
+                if 'rotor_speed' in sim_info['initial']:
+                    init_rotor_speed = sim_info['initial']['rotor_speed'][idx]
+            else:
+                init_rotor_speed = None
+            # ====== BART ======
 
             if 'dynamics' in sim_info['turbine']:
                 match sim_info['turbine']['dynamics']['model']:
                     case 'simple_drive_train':
-                        turbines.append(tur.TurbineSimpleDriveTrain(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]), np.array([sim_info["ambient"]["flow_field"]["wind_directions"][0], sim_info["turbine"][t]["shaft_tilt"]]), tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]), ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]), amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]), sim_info["turbine"][t], sim_info['sim']['sim']['time step'], sim_info['turbine']['dynamics'].get('loads', None)))
+                        if 'power_controller' in sim_info['controller']:
+                            turbines.append(tur.TurbineSimpleDriveTrainDownregulation(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]), np.array([sim_info["ambient"]["flow_field"]["wind_directions"][0], sim_info["turbine"][t]["shaft_tilt"]]), tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]), ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]), amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]), sim_info["turbine"][t], sim_info['sim']['sim']['time step'], sim_info['turbine']['dynamics'].get('loads', None), init_rotor_speed))
+                        else:
+                            turbines.append(tur.TurbineSimpleDriveTrain(np.array([sim_info["wind_farm"]["farm"]["layout_x"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_y"][idx] * dist_factor, sim_info["wind_farm"]["farm"]["layout_z"][idx] * dist_factor]), np.array([sim_info["ambient"]["flow_field"]["wind_directions"][0], sim_info["turbine"][t]["shaft_tilt"]]), tur.TurbineStatesFLORIDyn(sim_info["solver"]["settings"]["n_op"]), ops.FLORIDynOPs4(sim_info["solver"]["settings"]["n_op"]), amb.FLORIDynAmbient(sim_info["solver"]["settings"]["n_op"]), sim_info["turbine"][t], sim_info['sim']['sim']['time step'], sim_info['turbine']['dynamics'].get('loads', None), init_rotor_speed))
                     case _:
                         raise ValueError(f"Unknown dynamics model '{sim_info['turbine']['dynamics']['model']}' for {t} turbine")
             else:
