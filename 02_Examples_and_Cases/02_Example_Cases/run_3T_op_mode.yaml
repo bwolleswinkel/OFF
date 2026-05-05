@@ -1,47 +1,12 @@
-# //////////////////////////////////////////////////////////////////// #
-#    ____  ______ ______ 
-#   / __ \|  ____|  ____|
-#  | |  | | |__  | |__   
-#  | |  | |  __| |  __|  
-#  | |__| | |    | |     
-#   \____/|_|    |_|     
-# //////////////////////////////////////////////////////////////////// #
-# Copyright (C) <2024>, M Becker (TUDelft), M Lejeune (UCLouvain)
-
-# List of the contributors to the development of OFF: see LICENSE file.
-# Description and complete License: see LICENSE file.
-  
-# This program (OFF) is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-
-# You should have received a copy of the GNU Affero General Public License
-# along with this program (see COPYING file).  If not, see <https://www.gnu.org/licenses/>.
-
-
-# //////////////////////////////////////////////////////////////////// #
-# Welcome to the OFF input file. This file is used to set up a simulation.
-# The yaml file contains multiple comments to explain the setup choices and the structure of the file.
-# If you experience issues, create a new issue on the GitHub page https://github.com/TUDelft-DataDrivenControl/OFF
-# //////////////////////////////////////////////////////////////////// #
-
-
 # Simulation settings
 #  The time step is given in seconds, the start and end time in seconds as well.
 sim:
-  name: Verify Sim
-  description: Single turbine with steady ambient conditions, wind turbine dynamics and loads calculation
+  name: Testing operational modes
+  description: Three turbines with different operational modes
   sim:
-    # NOTE: The time step needs to be small enough to resolve the dynamics of the system, i.e., for forward Euler to be numerically stable.
-    time step: 0.2
+    time step: 0.1
     time start: 0.0
-    time end: 20.0
+    time end: 60.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
@@ -68,58 +33,22 @@ io:                             # Needs to be written by the user
 # NOTE: The layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the turbine information.
 wind_farm:
   name: turbine array
-  description: Single NREL 5 MW RWT
+  description: Three NREL 5 MW RWT
 
   farm:
     layout_x:
-      - 772.3
-      - 787.8
-      - 1110.7
-      - 1467.1
-      - 1439.4
-      - 1414.5
-      - 1398.4
-      - 1374.3
-      - 1110.4
-      - 808.3
-      - 829.8
-      - 842.5
+      - 608.0
+      - 1500.0
+      - 2392.0
     layout_y:
-      - 1307.0
-      - 1579.4
-      - 1457.7
-      - 1817.5
-      - 1503.4
-      - 1238.5
-      - 998.4
-      - 750.2
-      - 588.0
-      - 937.7
-      - 2026.5
-      - 2314.3
+      - 500.0
+      - 500.0
+      - 500.0
     layout_z:
       - 0.0
       - 0.0
       - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
     turbine_type:
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
-      - nrel_5mw
       - nrel_5mw
       - nrel_5mw
       - nrel_5mw
@@ -155,8 +84,8 @@ ambient:
       - 30.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 12.0
       - 8.0
+      - 4.0
     wind_speeds_t:
       - 0.0
       - 50.0
@@ -214,23 +143,26 @@ controller:
    orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
-     - [270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0, 270.0]
-     - [260.0, 250.0, 240.0, 260.0, 250.0, 240.0, 260.0, 250.0, 240.0, 260.0, 250.0, 240.0]
+     - [270.0, 270.0, 270.0]
+     - [280.0, 250.0, 220.0]
    orientation_t:          # in s
      - 0.0
      - 30.0
 
 
 events:
-  name: shutdown
-  description: Shuts down the turbines
+  name: Operational mode changes
+  description: Sets the operational mode of each turbine
 
   settings:
-    event_type: "shutdown"
-    shutdown_indices:
-      - [4, 6]
-    shutdown_t:
+    op_mode:
+      - [              ~,                ~,      'parked']
+      - [              ~,                ~, 'starting_up']
+      - ['shutting_down', 'emergency_stop',             ~]
+    op_mode_t:
+      - 0.0
       - 10.0
+      - 30.0
 
 
 # Turbine information
@@ -247,7 +179,7 @@ turbine:
       cutin_wind_speed: 3.0
       cutout_wind_speed: 25.0
       Cp_curve:
-        # Cp_tb_values: [ ]
+        Cp_tb_values: ['02_Examples_and_Cases', '00_Inputs', '00_OFF', '05_Turbine', 'NREL5MW', 'Cp_Ct_NREL5MW_nrel.csv']  # NOTE: Path to .csv file with tabulated values
         # Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
         # Cp_tb_bpa: [ ]          # in deg
         Cp_u_values:

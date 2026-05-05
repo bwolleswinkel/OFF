@@ -18,6 +18,7 @@
 
 import warnings
 # ====== BART ======
+from pathlib import Path
 from typing import Callable, Literal, Optional
 import scipy as sp
 # ====== BART ======
@@ -538,8 +539,8 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             self.omega = convert(init_rotor_speed, 'RPM', 'rad/s')  # In rad/s
         else:
             self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
-        self.pitch = 0
-        self.operational_mode: Literal['power_production', 'shutting_down', 'stopped', 'starting_up'] = 'power_production'
+        self.pitch = 0   # In rad
+        self.operational_mode: Literal['power_production', 'shutting_down', 'emergency_stop', 'parked', 'starting_up'] = 'power_production'
         self.turbine_data = turbine_data
         self.rotor_radius = self.diameter / 2
         self.inertia = turbine_data['hub_inertia_low_speed_shaft']
@@ -549,6 +550,9 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         self.dt = dt  # Time step for the dynamics (in seconds)
         #: Calculate the optimal gain K
         # self.K = 1 / (2 * (((turbine_data['performance']['rated_rot_speed'] * self.rotor_radius) / turbine_data['performance']['rated_wind_speed']) ** 3)) * 1.225 * np.pi * (self.rotor_radius ** 5) * turbine_data['performance']['Cp_opt']
+        self.Cp_interp = None
+        self.pitch_interp = None
+        self.Cp_power_mode = 'not_set'
         # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
         self.K = 2680752.3292693296
         # FIXME: This is just a random constant
@@ -575,23 +579,74 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         
         """
 
+        def _init_Cp() -> None:
+            if "Cp_tb_values" in self.turbine_data["performance"]["Cp_curve"]:
+                if isinstance(Cp_tb_values_list := self.turbine_data["performance"]["Cp_curve"]["Cp_tb_values"], list) and isinstance(Cp_tb_values_list[-1], str) and Cp_tb_values_list[-1].endswith('.csv'):
+                    #: Convert the list of path segments to a Path
+                    Cp_tb_values_path = Path(*Cp_tb_values_list)
+                    #: Read the Csv
+                    # FIXME: This is now all hardcoded, not really what we want
+                    Data = np.loadtxt(Cp_tb_values_path, delimiter=';', skiprows=1)
+                    (pitch, tsr, Cp, Ct), stall = [np.flipud(Data[:, i].reshape(300, 120, order='F')) for i in [1, 2, 3, 4]], np.full((300, 120), np.nan)  # NOTE: Pitch is expected in deg
+                    # pitch_range, tsr_range = [-10, 50], [0.05, 15]
+                    pitch_vals, tsr_vals = np.unique(pitch), np.unique(tsr)
+                    # Use only valid table entries for interpolation. The NREL table contains NaN holes,
+                    # and RegularGridInterpolator returns NaN whenever a cell corner is missing.
+                    Cp_flat = ~np.isnan(Cp).flatten()
+                    Cp_points = np.vstack((tsr.flatten()[Cp_flat], pitch.flatten()[Cp_flat])).T
+                    Cp_values = Cp.flatten()[Cp_flat]
+                    Ct_flat = ~np.isnan(Ct).flatten()
+                    Ct_points = np.vstack((tsr.flatten()[Ct_flat], pitch.flatten()[Ct_flat])).T
+                    Ct_values = Ct.flatten()[Ct_flat]
+                    Cp_interp = sp.interpolate.LinearNDInterpolator(Cp_points, Cp_values, fill_value=np.nan)
+                    Ct_interp = sp.interpolate.LinearNDInterpolator(Ct_points, Ct_values, fill_value=np.nan)
+                    self.Cp_interp = lambda lbd_pitch, lbd_tsr: float(Cp_interp(np.stack((np.asarray(lbd_tsr), np.asarray(lbd_pitch)), axis=-1))[0])  # NOTE: Pitch is expected in deg
+                    self.Ct_interp = lambda lbd_pitch, lbd_tsr: float(Ct_interp(np.stack((np.asarray(lbd_tsr), np.asarray(lbd_pitch)), axis=-1))[0])  # NOTE: Pitch is expected in deg
+                    self.Cp_power_mode = 'lookup_table'
+                else:
+                    raise ValueError("Cp lookup table values should be a list of values or a string ending with .csv")
+            else:
+                #: Give a warning that blade dynamics are not taken into account
+                try: 
+                    if not self.warn_raised:
+                        warnings.warn(f"No Cp lookup table provided for the turbine. Using a linear interpolation of the Cp curve based on wind speed.", UserWarning, stacklevel=4)
+                        self.warn_raised = True
+                except AttributeError:
+                    self.warn_raised = False
+                #: Create an interpolation of the Cp curve based on the wind speed
+                Cp_interp = lambda ws: np.interp(ws, self.Cp_u_wind_speeds, self.Cp_u_values)
+                self.Cp_interp = Cp_interp
+                self.Cp_power_mode = 'wind_speed'
+
+        def _init_pitch() -> None:
+            if 'pitch' in self.turbine_data:
+                try:
+                    pitch_u_values = self.turbine_data['pitch']['pitch_curve']['pitch_u_values']
+                    pitch_u_wind_speeds = self.turbine_data['pitch']['pitch_curve']['pitch_u_wind_speeds']
+                    self.pitch_interp = lambda ws: np.interp(ws, pitch_u_wind_speeds, pitch_u_values)  # NOTE: Pitch is expected in deg
+                except KeyError as e:
+                    raise KeyError("Pitch curve should be provided in the input file under the 'pitch' key, with a list of values or a string ending with .csv") from e
+            else:
+                warnings.warn(f"No pitch curve provided for the turbine. Always using 0 degrees.", UserWarning, stacklevel=4)
+                self.pitch_interp = lambda ws: 0
+
         #: Check if the turbine is active
-        if self.operational_mode == 'stopped':
+        if self.operational_mode == 'parked':
+            if self.omega != 0:
+                warnings.warn("Turbine is parked but rotor speed is not zero. Setting power and rotor speed to zero, but this should normally not happen.", UserWarning, stacklevel=4)
+                self.omega = 0
             return 0
+        elif self.operational_mode == 'starting_up':
+            if self.omega == 0:
+                self.omega = convert(0.1, 'RPM', 'rad/s')  # FIXME: This is just a placeholder value, should be set based on the turbine data and startup procedure
+        
         #: Extract the Cp curve
-        if "Cp_tb_values" in self.turbine_data["performance"]["Cp_curve"]:
-            raise NotImplementedError("Cp calculation based on Cp lookup table not implemented yet")
-        else:
-            #: Give a warning that blade dynamics are not taken into account
-            try: 
-                if not self.warn_raised:
-                    warnings.warn(f"No Cp lookup table provided for the turbine. Using a linear interpolation of the Cp curve based on wind speed.", UserWarning, stacklevel=4)
-                    self.warn_raised = True
-            except AttributeError:
-                self.warn_raised = False
-            #: Create an interpolation of the Cp curve based on the wind speed
-            Cp_power_mode = 'wind_speed'
-            Cp_interp = lambda ws: np.interp(ws, self.Cp_u_wind_speeds, self.Cp_u_values)
+        if self.Cp_interp is None:
+            _init_Cp()
+
+        #: Extract the pitch curve
+        if self.pitch_interp is None:
+            _init_pitch()
 
         if self.yaw_power_coeff == "pP":
             yaw = np.deg2rad(self.turbine_states.get_current_yaw())
@@ -613,24 +668,45 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             power = 0.5 * np.pi * (self.diameter / 2) ** 2 * wind_speed ** 3 * cp * yaw_coef * air_den
             raise Exception("Cp calculation based on cp-bpa-tsr not implemented yet.")
         elif self.power_calc_method == 'simple_drive_train':
+
             #: Calculate the tip speed ratio
             tsr_t = (self.omega * self.rotor_radius) / wind_speed if wind_speed > 0 else 0
+
+            #: Calculate the pitch
+            # FIXME: This gives really funky results in above-rated conditions; everything goes to zero
+            if self.Cp_power_mode == 'wind_speed':
+                try: 
+                    if not self.Cp_warn_raised:
+                        warnings.warn(f"Pitch is not taken into account in the Cp calculation (Cp_power_mode={self.Cp_power_mode}). This may lead to inconsistent results.", UserWarning, stacklevel=4)
+                        self.Cp_warn_raised = True
+                except AttributeError:
+                    self.Cp_warn_raised = False
+            if wind_speed < self.turbine_data['performance']['rated_wind_speed']:
+                self.pitch = 0
+            else:
+                self.pitch = np.deg2rad(self.pitch_interp(wind_speed))
+            if self.operational_mode in ['shutting_down', 'emergency_stop']:
+                self.pitch = np.deg2rad(30.5)  # FIXME: Should be 90, but without actuator dynamics this seems to 'crash' the turbine | FIXME: Now, Cp is not becoming zero....
+
             #: Calculate the Cp coefficient
-            match Cp_power_mode:
+            match self.Cp_power_mode:
                 case 'wind_speed':
                     args = (wind_speed,)
                 case 'lookup_table':
-                    args = (tsr_t, self.pitch)
+                    args = (np.rad2deg(self.pitch), tsr_t)
                 case _:
-                    raise ValueError(f"Unsupported Cp power mode '{Cp_power_mode}'")
-            Cp_t = Cp_interp(*args)
+                    raise ValueError(f"Unsupported Cp power mode '{self.Cp_power_mode}'")
+            Cp_t = self.Cp_interp(*args)
+
             #: Calculate the aerodynamic torque
             # FIXME: This results in error if the rotor speed is zero
             if np.isclose(self.omega, 0):
                 warnings.warn("Rotor speed is zero, setting aerodynamic torque to 1E4 Nm to avoid division by zero", RuntimeWarning, stacklevel=4)
-                T_a = 1E4
+                # T_a = 1E4  # FIXME: Why this value?
+                T_a = 1E4  # FIXME: Why this value?
             else:
                 T_a = 1 / (2 * self.omega) * air_den * np.pi * (self.rotor_radius ** 2) * Cp_t * (wind_speed ** 3)
+
             #: Calculate the generator torque
             # FIXME: For now, the controller mode is hardcoded here, but it should be passed as an argument
             match self.gen_torque_controller_mode:
@@ -638,32 +714,38 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                     T_g = self.K * (self.omega ** 2)
                 case _:
                     raise ValueError(f"Unsupported controller mode '{self.gen_torque_controller_mode}'")
+            if self.operational_mode == 'emergency_stop':
+                T_g = 0  # FIXME: Is this really accurate?
+
             #: Check if there are any shutdown events
             match self.operational_mode:
                 case 'power_production':
                     T_brake = 0
                 case 'shutting_down':
                     if self.omega == 0:
-                        self.operational_mode = 'stopped'
+                        self.operational_mode = 'parked'
+                        return 0
+                    T_brake = 0
+                case 'emergency_stop':
+                    if self.omega == 0:
+                        self.operational_mode = 'parked'
                         return 0
                     T_brake = self.brake_torque
-                    # FIXME: This is kind of a weird hack... but makes the stopping more 'smooth'
-                    T_a = np.tanh(0.1 * self.omega) * T_a
-                    # TEMP
-                    #
-                    print(f"Value of omega: {self.omega:.2e}")
-                    print(f"Value of T_a: {T_a:.2e}")
-                    #
-                case 'stopped':
+                    # # FIXME: This is kind of a weird hack... but makes the stopping more 'smooth'
+                    # T_a = np.tanh(0.1 * self.omega) * T_a
+                case 'parked':
                     pass  # NOTE: Should have been caught at the top of this method
                 case 'starting_up':
-                    raise NotImplementedError("Starting up mode not implemented yet")
+                    if self.omega >= convert(1, 'RPM', 'rad/s'):  # FIXME: This is just a placeholder value, should be set based on the turbine data and startup procedure
+                        self.operational_mode = 'power_production'
+                    T_brake = 0
                 case _:
                     raise ValueError(f"Unsupported operational mode '{self.operational_mode}'")
+
             #: Calculate the rotor acceleration
             omega_dot_t = (T_a - T_g - T_brake) / self.inertia
             #: Calculate the power output
-            power = T_g * self.generator_efficiency * self.omega  # Power output in Watts
+            power = T_g * self.generator_efficiency * self.omega * yaw_coef  # Power output in Watts
             #: Calculate the new rotor speed
             self.omega = self.omega + omega_dot_t * self.dt
             #: Make sure the rotor speed does not go below zero
@@ -863,11 +945,13 @@ class TurbineSimpleDriveTrainDownregulation(TurbineSimpleDriveTrain):
                 #: Create an interpolation of the Cp curve based on the wind speed
                 # NOTE: This MUST be set to 'lookup_table', otherwise the blade pitch will not have any effect
                 Cp_power_mode = 'lookup_table'
-                from scipy.interpolate import RegularGridInterpolator
-                _Cp_interp = RegularGridInterpolator((self.tsr_values, self.pitch_values), self.Cp_matrix, 
-                                                   method='linear', bounds_error=False, fill_value=0)
+                from scipy.interpolate import LinearNDInterpolator
+                Cp_flat = ~np.isnan(self.Cp_matrix).flatten()
+                Cp_points = np.vstack((np.repeat(self.tsr_values, len(self.pitch_values))[Cp_flat], np.tile(self.pitch_values, len(self.tsr_values))[Cp_flat])).T
+                Cp_values = self.Cp_matrix.flatten()[Cp_flat]
+                _Cp_interp = LinearNDInterpolator(Cp_points, Cp_values, fill_value=np.nan)
                 # Create a wrapper function for easier calling with proper input formatting
-                Cp_interp = lambda tsr, pitch: _Cp_interp(np.array([[float(tsr), float(pitch)]]))[0] 
+                Cp_interp = lambda tsr, pitch: _Cp_interp(np.array([[float(tsr), float(pitch)]]))[0]
 
             if self.yaw_power_coeff == "pP":
                 yaw = np.deg2rad(self.turbine_states.get_current_yaw())

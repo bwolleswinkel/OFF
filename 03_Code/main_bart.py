@@ -68,7 +68,10 @@ def main():
     # run_1T_ss_wt_dynamics_downregulation
     # run_1T_downregulation_simulink
     # run_schkortleben_downregulation
-    input_file_name = 'run_schkortleben_downregulation'  # NOTE: Without .yaml
+    # run_schkortleben_downregulation_half
+    # run_3T_op_mode
+    # run_1T_ss_above_rated
+    input_file_name = 'run_3T_op_mode'  # NOTE: Without .yaml
 
     # ====== BART ======
 
@@ -286,9 +289,10 @@ def main():
     # Plot the operational mode
     mode_mapping = {
         'power_production': 1,
-        'shutting_down': 2, 
-        'starting_up': 3,
-        'stopped': 4
+        'shutting_down': 2,
+        'emergency_stop': 3,
+        'parked': 4,
+        'starting_up': 5,
     }
     for idx in range(n_wt):
         mode_values = []
@@ -296,8 +300,8 @@ def main():
             mode_values.append(mode_mapping.get(mode, np.nan))
         ax_status.plot(t_range, mode_values, color=col_vals[idx % len(col_vals)], label=f'Turbine {idx:02d}', linewidth=2, drawstyle='steps-post')
     ax_status.set_ylabel('Operational Mode')
-    ax_status.set_yticks([1, 2, 3, 4])
-    ax_status.set_yticklabels(['Power Production', 'Shutting Down', 'Starting Up', 'Stopped'])
+    ax_status.set_yticks([1, 2, 3, 4, 5])
+    ax_status.set_yticklabels(['Power Production', 'Shutting Down', 'Emergency Stop', 'Parked', 'Starting Up'])
     ax_status.legend(loc='upper left', ncols=n_wt)
     ax_status.grid(True, alpha=0.3)
 
@@ -428,33 +432,27 @@ def main():
     if plot_power_seperate:
         fig_power, ax_power = plt.subplots(n_wt, 1, sharex=True)
         for idx in range(n_wt):
-            ax_power[idx].plot(t_range, power[idx], color=col_vals[idx % len(col_vals)], label=f'Power {idx:02d}')
-            ax_power[idx].plot(t_range, power_setpoints[idx], '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
+            ax_power[idx].plot(t_range, power[idx] * 1E-6, color=col_vals[idx % len(col_vals)], label=f'Power {idx:02d}')
+            ax_power[idx].plot(t_range, power_setpoints[idx] * 1E-6, '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
             ax_power[idx].legend(loc='upper left')
-            ax_power[idx].set_ylim([0, 1.1 * max(power[idx])])
+            ax_power[idx].set_ylim([0, 1.1 * max(power[idx] * 1E-6)])
         ax_power[-1].set_xlabel(r"Time $t$ (in s)")
         fig_power.suptitle("Power of turbines")
     else:
         fig_power, ax_power = plt.subplots()
         for idx in range(n_wt):
-            ax_power.plot(t_range, power[idx], label=f'Power {idx:02d}')
-            ax_power.plot(t_range, power_setpoints[idx], '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
-        ax_power.set_ylabel('Power (in W)')
+            ax_power.plot(t_range, power[idx] * 1E-6, label=f'Power {idx:02d}')
+            ax_power.plot(t_range, power_setpoints[idx] * 1E-6, '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
+        ax_power.set_ylabel('Power (in MW)')
         ax_power.legend()
         ax_power.set_xlabel(r"Time $t$ (in s)")
-        # FIXME: To remove this weird scaling, does NOT work!!
-        ax_power.ticklabel_format(style='plain', useOffset=False)
-        try:
-            ax_power.set_ylim([0.9 * min([np.min(power_idx) for power_idx in power]), 1.1 * max([np.max(power_idx) for power_idx in power])])
-        except ValueError:
-            pass
         fig_power.suptitle("Power of turbines")
 
     # Plot the total 
     fig_total_power, ax_total_power = plt.subplots()
     total_power = np.sum(power, axis=0)
-    ax_total_power.plot(t_range, total_power, '--', color='black', label='Total power')
-    ax_total_power.set_ylabel('Power (in W)')
+    ax_total_power.plot(t_range, total_power * 1E-6, '--', color='black', label='Total power')
+    ax_total_power.set_ylabel('Power (in MW)')
     ax_total_power.legend()
     ax_total_power.set_xlabel(r"Time $t$ (in s)")
     fig_total_power.suptitle("Total power of the wind farm")

@@ -33,6 +33,7 @@ from off.logger import CONSOLE_LVL, FILE_LVL, Formatter, _logger_add
 import shutil
 
 # ====== BART ======
+import warnings
 from off.turbine import TurbineSimpleDriveTrain, TurbineSimpleDriveTrainDownregulation
 # ====== BART ======
 
@@ -298,11 +299,21 @@ class OFF:
                 # ====== BART ======
                 # Update operational mode based on events
                 if self.settings_events is not None:
-                    if self.settings_events["settings"]["event_type"] == "shutdown":
+                    if "event_type" in self.settings_events["settings"] and self.settings_events["settings"]["event_type"] == "shutdown":
                         for event_idx, event_t in enumerate(self.settings_events["settings"]["shutdown_t"]):
                             if t >= event_t and turb_idx in self.settings_events["settings"]["shutdown_indices"][event_idx]:
                                 if tur.operational_mode == 'power_production':
                                     tur.operational_mode = 'shutting_down'
+                    else:
+                        try:
+                            self.op_mode_idx
+                        except AttributeError as _:
+                            self.op_mode_idx = 0
+                        if self.op_mode_idx < len(self.settings_events["settings"]["op_mode_t"]) and t >= self.settings_events["settings"]["op_mode_t"][self.op_mode_idx]:
+                            if self.settings_events["settings"]["op_mode"][self.op_mode_idx][turb_idx] is not None:
+                                tur.operational_mode = self.settings_events["settings"]["op_mode"][self.op_mode_idx][turb_idx]
+                            if turb_idx == len(self.wind_farm.turbines) - 1:
+                                self.op_mode_idx += 1
                 else:
                     pass
                 # ====== BART ======

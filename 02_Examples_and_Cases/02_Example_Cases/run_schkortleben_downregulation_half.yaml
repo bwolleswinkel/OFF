@@ -41,7 +41,7 @@ sim:
     # NOTE: The time step needs to be small enough to resolve the dynamics of the system, i.e., for forward Euler to be numerically stable.
     time step: 0.2
     time start: 0.0
-    time end: 20.0
+    time end: 240.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
@@ -155,7 +155,7 @@ ambient:
       - 30.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 12.0
+      - 10.0
       - 8.0
     wind_speeds_t:
       - 0.0
@@ -220,6 +220,22 @@ controller:
      - 0.0
      - 30.0
 
+ power_controller:
+   name: constant tip-speed downregulation controller
+   description: Set the power setpoint and rotor speed setpoint based on a constant tip-speed ratio
+
+   settings:
+     type: 'lio'
+     strategy: 'constant_tsr'
+     power_factor:  # NOTE: This is the factor of rated power, so a value between 0 and 1.
+       - [0.1, 0.1, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+       - [0.2, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+       - [0.1, 0.1, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+     power_t:
+       - 0.0
+       - 100.0
+       - 150.0
+
 
 events:
   name: shutdown
@@ -228,9 +244,13 @@ events:
   settings:
     event_type: "shutdown"
     shutdown_indices:
-      - [4, 6]
+      - [8, 9, 10, 11]
     shutdown_t:
-      - 10.0
+      - 150.0
+
+
+initial:
+  rotor_speed: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]  # In RPM
 
 
 # Turbine information
@@ -244,6 +264,7 @@ turbine:
     performance:
       rated_power: 5000000
       rated_wind_speed: 11.4
+      rated_rotor_speed: 12.1  # In RPM
       cutin_wind_speed: 3.0
       cutout_wind_speed: 25.0
       Cp_curve:
@@ -512,6 +533,7 @@ turbine:
     generator_efficiency: 0.944
     hub_height: 90
     hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2
+    inertia: 4.0802E7
     pP: 1.88  # FIXME: These are from the IEA 10MW turbine
     pT: 1.88  # FIXME: These are from the IEA 10MW turbine
     rotor_diameter: 126
@@ -533,7 +555,7 @@ turbine:
 
   dynamics:
     model: 'simple_drive_train'
-    loads: 'first_principles'
+    # loads: 'first_principles'
 
 
 # Visualization settings
