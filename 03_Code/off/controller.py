@@ -694,6 +694,51 @@ class PowerController(ABC):
         pass
 
 
+class KOmegaSquaredController(PowerController):
+    """K omega squared controller with steady-state pitch LUT"""
+
+    def __init__(self, turbine_data: dict, n_wt: int) -> None:
+        self.turbine_data: dict = turbine_data
+        self.T_g: list[float] = [np.nan for _ in range(n_wt)]
+        self.pitch: list[float] = [np.nan for _ in range(n_wt)]
+        self.K_omega: float = np.nan  # FIXME: Should this also not be a list of floats for non-homogeneous wind farms?
+        self.pitch_interp: Callable[[float], float] = lambda ws: np.nan
+        self._is_init: bool = False
+
+    def __call__(self, turbine: tur, i_t: int, time_step: float, wind_speed: float) -> tur:
+
+        def _init_ctrl(self):
+            # FIXME: Maybe I should just move this to __init__
+            # Calculate the K_omega gain based on the turbine parameters
+            self.K_omega = 2680752.3292693296  # FIXME: For now, we just have this hardcoded to NREL 5MW
+            # Initialize the pitch LUT
+            try:
+                pitch_u_values = self.turbine_data['nrel_5mw']['pitch']['pitch_curve']['pitch_u_values']  # FIXME: Here, nrel 5MW is now also hardcoded
+                pitch_u_wind_speeds = self.turbine_data['nrel_5mw']['pitch']['pitch_curve']['pitch_u_wind_speeds']
+                self.pitch_interp = lambda ws: np.interp(ws, pitch_u_wind_speeds, pitch_u_values)  # NOTE: Pitch is expected in deg
+            except KeyError as e:
+                raise KeyError("Pitch curve should be provided in the input file under the 'pitch' key, with a list of values or a string ending with .csv") from e
+            self._is_init = True
+
+        #: Initialize the turbine
+        if not self._is_init:
+            _init_ctrl(self)
+        #: Compute the pitch angle based on the error in rotor speed
+        if wind_speed < turbine.rated_wind_speed:
+            pitch = 0
+        else:
+            pitch = np.deg2rad(self.pitch_interp(wind_speed))
+        #: Calculate the generator torque
+        T_g = self.K_omega * turbine.omega ** 2
+        #: Set the control actions to the turbine
+        turbine.T_g = T_g
+        turbine.pitch = pitch
+
+        #: Save the latest setpoint
+        self.T_g[i_t] = T_g
+        self.pitch[i_t] = pitch
+
+
 class DownregulationControllerLio(PowerController):
     """Controller to set the power setpoint for downregulation based on the work of Lio et al."""
 

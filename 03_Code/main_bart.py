@@ -71,7 +71,8 @@ def main():
     # run_schkortleben_downregulation_half
     # run_3T_op_mode
     # run_1T_ss_above_rated
-    input_file_name = 'run_3T_op_mode'  # NOTE: Without .yaml
+    # run_3T_ext_ctrl
+    input_file_name = 'run_3T_ext_ctrl'  # NOTE: Without .yaml
 
     # ====== BART ======
 

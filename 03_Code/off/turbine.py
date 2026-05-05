@@ -522,7 +522,7 @@ class HAWT_ADM(Turbine):
 class TurbineSimpleDriveTrain(HAWT_ADM):
     """A turbine model which implements the turbine dynamics (as a simple drive train), including an actual rotor speed and inertia."""
 
-    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None, init_rotor_speed: Optional[float] = None):
+    def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None, init_rotor_speed: Optional[float] = None, init_T_g: Optional[float] = None):
         super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data)
         #: Add the dynamic states
         # FIXME: These need to be able to be passed to the turbine
@@ -539,9 +539,14 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
             self.omega = convert(init_rotor_speed, 'RPM', 'rad/s')  # In rad/s
         else:
             self.omega = convert(8, 'RPM', 'rad/s')  # In rad/s
-        self.pitch = 0   # In rad
+        if init_T_g is not None:
+            self.T_g = float(init_T_g)
+        else:
+            self.T_g: float = 0  # Generator torque
+        self.pitch: float = 0  # Blade pitch angle, initialized to zero
         self.operational_mode: Literal['power_production', 'shutting_down', 'emergency_stop', 'parked', 'starting_up'] = 'power_production'
         self.turbine_data = turbine_data
+        self.rated_wind_speed = turbine_data['performance']['rated_wind_speed']
         self.rotor_radius = self.diameter / 2
         self.inertia = turbine_data['hub_inertia_low_speed_shaft']
         self.generator_efficiency = turbine_data['generator_efficiency']
@@ -681,10 +686,11 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                         self.Cp_warn_raised = True
                 except AttributeError:
                     self.Cp_warn_raised = False
-            if wind_speed < self.turbine_data['performance']['rated_wind_speed']:
-                self.pitch = 0
-            else:
-                self.pitch = np.deg2rad(self.pitch_interp(wind_speed))
+            # FIXME: This should be set by an external controller
+            # if wind_speed < self.rated_wind_speed:
+            #     self.pitch = 0
+            # else:
+            #     self.pitch = np.deg2rad(self.pitch_interp(wind_speed))
             if self.operational_mode in ['shutting_down', 'emergency_stop']:
                 self.pitch = np.deg2rad(30.5)  # FIXME: Should be 90, but without actuator dynamics this seems to 'crash' the turbine | FIXME: Now, Cp is not becoming zero....
 
@@ -708,14 +714,15 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                 T_a = 1 / (2 * self.omega) * air_den * np.pi * (self.rotor_radius ** 2) * Cp_t * (wind_speed ** 3)
 
             #: Calculate the generator torque
-            # FIXME: For now, the controller mode is hardcoded here, but it should be passed as an argument
-            match self.gen_torque_controller_mode:
-                case 'K_omega_squared':
-                    T_g = self.K * (self.omega ** 2)
-                case _:
-                    raise ValueError(f"Unsupported controller mode '{self.gen_torque_controller_mode}'")
+            # FIXME: This should be set by an external controller
+            # # FIXME: For now, the controller mode is hardcoded here, but it should be passed as an argument
+            # match self.gen_torque_controller_mode:
+            #     case 'K_omega_squared':
+            #         T_g = self.K * (self.omega ** 2)
+            #     case _:
+            #         raise ValueError(f"Unsupported controller mode '{self.gen_torque_controller_mode}'")
             if self.operational_mode == 'emergency_stop':
-                T_g = 0  # FIXME: Is this really accurate?
+                self.T_g = 0  # FIXME: Is this really accurate?
 
             #: Check if there are any shutdown events
             match self.operational_mode:
@@ -743,9 +750,9 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
                     raise ValueError(f"Unsupported operational mode '{self.operational_mode}'")
 
             #: Calculate the rotor acceleration
-            omega_dot_t = (T_a - T_g - T_brake) / self.inertia
+            omega_dot_t = (T_a - self.T_g - T_brake) / self.inertia
             #: Calculate the power output
-            power = T_g * self.generator_efficiency * self.omega * yaw_coef  # Power output in Watts
+            power = self.T_g * self.generator_efficiency * self.omega * yaw_coef  # Power output in Watts
             #: Calculate the new rotor speed
             self.omega = self.omega + omega_dot_t * self.dt
             #: Make sure the rotor speed does not go below zero
@@ -891,7 +898,7 @@ class TurbineSimpleDriveTrainDownregulation(TurbineSimpleDriveTrain):
     def __init__(self, base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model: Literal[ 'first_principles'] | None = None, init_rotor_speed: Optional[float] = None):
         super().__init__(base_location, orientation, turbine_states, observation_points, ambient_states, turbine_data, dt, load_model, init_rotor_speed)
         # FIXME: This is also a temporary overwrite, no idea if its correct
-        self.inertia: float = float(turbine_data['inertia'])
+        self.inertia: float = float(turbine_data['inertia'])  # FIXME: Is this the right inertia?
         self.rated_power: float = turbine_data['performance']['rated_power']  # in W
         self.rated_rotor_speed: float = turbine_data['performance']['rated_rotor_speed']  # in RPM
         self.opt_Cp: float = 0.482  # FIXME: Currently hardcoded, but should be passed as an argument

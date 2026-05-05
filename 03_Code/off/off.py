@@ -104,6 +104,8 @@ class OFF:
         # ====== POWER CONTROLLER ======
         if 'power_controller' in settings_ctr_all:
             match settings_ctr_all['power_controller']['settings']['type']:
+                case 'k_omega_squared':
+                    self.power_controller = ctr.KOmegaSquaredController(self.settings_turbine, len(self.wind_farm.turbines))
                 case 'lio':
                     self.power_controller = ctr.DownregulationControllerLio(settings_ctr_all['power_controller']['settings']['strategy'], {'power_factor': settings_ctr_all['power_controller']['settings']['power_factor'], 'power_t': settings_ctr_all['power_controller']['settings']['power_t']})
                 case _:
