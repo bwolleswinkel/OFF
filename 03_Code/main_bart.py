@@ -72,7 +72,9 @@ def main():
     # run_3T_op_mode
     # run_1T_ss_above_rated
     # run_3T_ext_ctrl
-    input_file_name = 'run_3T_ext_ctrl'  # NOTE: Without .yaml
+    # run_3T_downreg
+    # run_schkortleben_scen_1a
+    input_file_name = 'run_3T_wt_dynamics_loads'  # NOTE: Without .yaml
 
     # ====== BART ======
 
@@ -138,6 +140,7 @@ def main():
     generator_efficiency = input_file['turbine'][turbine_type]['generator_efficiency']
     u_power_coeffs, C_P_coeffs = np.array(input_file['turbine'][turbine_type]['performance']['Cp_curve']['Cp_u_wind_speeds']), np.array(input_file['turbine'][turbine_type]['performance']['Cp_curve']['Cp_u_values'])
     u_thrust_coeffs, C_T_coeffs = np.array(input_file['turbine'][turbine_type]['performance']['Ct_curve']['Ct_u_wind_speeds']), np.array(input_file['turbine'][turbine_type]['performance']['Ct_curve']['Ct_u_values'])
+    rated_power = input_file['turbine'][turbine_type]['performance'].get('rated_power', np.nan)
 
     # Create the ambient input file
     wd_input_file = [input_file['ambient']['flow_field']['wind_directions_t'], input_file['ambient']['flow_field']['wind_directions']]
@@ -162,7 +165,7 @@ def main():
 
     # Extract the power setpoints
     try:
-        power_setpoints = [measurements.loc[measurements['t_idx'] == idx, 'power_setpoint'] for idx in range(n_wt)]
+        power_setpoints = [measurements.loc[measurements['t_idx'] == idx, 'power_setpoint'].astype(float).to_numpy() for idx in range(n_wt)]
     except KeyError:
         power_setpoints = [np.full_like(t_range, np.nan) for idx in range(n_wt)]
 
@@ -419,11 +422,24 @@ def main():
     else:
         fig_control_torque_pitch = None
 
+    if not np.isnan(rated_power):
+        rated_tol = max(abs(rated_power) * 1e-3, abs(rated_power) * 1e-6)
+        power_mask_plot = [np.isclose(ps, rated_power, rtol=1e-3, atol=rated_tol) for ps in power_setpoints]
+        power_setpoints_plot = [np.where(mask, np.nan, ps) for mask, ps in zip(power_mask_plot, power_setpoints)]
+        rotor_speed_setpoints_plot = [
+            np.where(mask, np.nan, np.asarray(rs, dtype=float))
+            for mask, rs in zip(power_mask_plot, rotor_speed_setpoint)
+        ]
+    else:
+        power_setpoints_plot = power_setpoints
+        rotor_speed_setpoints_plot = [np.asarray(rs, dtype=float) for rs in rotor_speed_setpoint]
+
     # Plot the rotor speeds
     fig_rotor_speed, ax_rotor_speed = plt.subplots()
     for idx in range(n_wt):
         ax_rotor_speed.plot(t_range, convert(rotor_speed[idx], 'rad/s', 'RPM'), color=col_vals[idx % len(col_vals)], label=f'WT{idx:02d}')
-        ax_rotor_speed.plot(t_range, convert(rotor_speed_setpoint[idx], 'rad/s', 'RPM'), '--', color=col_vals[idx % len(col_vals)], label=f'WT{idx:02d} setpoint')
+        rotor_label = f'WT{idx:02d} setpoint' if not np.all(np.isnan(rotor_speed_setpoints_plot[idx])) else None
+        ax_rotor_speed.plot(t_range, convert(rotor_speed_setpoints_plot[idx], 'rad/s', 'RPM'), '--', color=col_vals[idx % len(col_vals)], label=rotor_label)
     ax_rotor_speed.set_ylabel(r"Rotor speed $\omega$ (in RPM)")
     ax_rotor_speed.legend(loc='upper left', ncols=n_wt)
     ax_rotor_speed.set_xlabel(r"Time $t$ (in s)")
@@ -433,8 +449,10 @@ def main():
     if plot_power_seperate:
         fig_power, ax_power = plt.subplots(n_wt, 1, sharex=True)
         for idx in range(n_wt):
-            ax_power[idx].plot(t_range, power[idx] * 1E-6, color=col_vals[idx % len(col_vals)], label=f'Power {idx:02d}')
-            ax_power[idx].plot(t_range, power_setpoints[idx] * 1E-6, '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
+            plot_color = col_vals[idx % len(col_vals)]
+            ax_power[idx].plot(t_range, power[idx] * 1E-6, color=plot_color, label=f'Power {idx:02d}')
+            label = f'Power setpoint {idx:02d}' if not np.all(np.isnan(power_setpoints_plot[idx])) else None
+            ax_power[idx].plot(t_range, power_setpoints_plot[idx] * 1E-6, '--', color=plot_color, label=label)
             ax_power[idx].legend(loc='upper left')
             ax_power[idx].set_ylim([0, 1.1 * max(power[idx] * 1E-6)])
         ax_power[-1].set_xlabel(r"Time $t$ (in s)")
@@ -442,8 +460,10 @@ def main():
     else:
         fig_power, ax_power = plt.subplots()
         for idx in range(n_wt):
-            ax_power.plot(t_range, power[idx] * 1E-6, label=f'Power {idx:02d}')
-            ax_power.plot(t_range, power_setpoints[idx] * 1E-6, '--', color=col_vals[idx % len(col_vals)], label=f'Power setpoint {idx:02d}')
+            plot_color = col_vals[idx % len(col_vals)]
+            ax_power.plot(t_range, power[idx] * 1E-6, color=plot_color, label=f'Power {idx:02d}')
+            label = f'Power setpoint {idx:02d}' if not np.all(np.isnan(power_setpoints_plot[idx])) else None
+            ax_power.plot(t_range, power_setpoints_plot[idx] * 1E-6, '--', color=plot_color, label=label)
         ax_power.set_ylabel('Power (in MW)')
         ax_power.legend()
         ax_power.set_xlabel(r"Time $t$ (in s)")

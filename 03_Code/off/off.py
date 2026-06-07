@@ -35,6 +35,7 @@ import shutil
 # ====== BART ======
 import warnings
 from off.turbine import TurbineSimpleDriveTrain, TurbineSimpleDriveTrainDownregulation
+from off.controller import DownregulationControllerLio
 # ====== BART ======
 
 from off import __file__ as OFF_PATH
@@ -359,7 +360,7 @@ class OFF:
 
                 # ====== BART ======
                 # Save the rotor speed and rotor speed setpoint in the measurements
-                if isinstance(tur, TurbineSimpleDriveTrainDownregulation):
+                if isinstance(self.power_controller, DownregulationControllerLio):
                     # Save the rotor speed setpoint
                     m_tmp['omega_setpoint'] = self.power_controller.rotor_setpoint[turb_idx]
                     # Save the power setpoint in the measurements

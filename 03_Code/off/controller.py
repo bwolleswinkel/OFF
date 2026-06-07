@@ -761,7 +761,16 @@ class DownregulationControllerLio(PowerController):
 
         def get_power_setpoint(setpoints: dict[str, list[float]], time_step: float, i_t: int) -> float:
             """Receives a dictionary with two keys, 'power_factor' and 'power_t', which contain lists of the same length. The power factor list contains the power factor setpoint to be applied at the corresponding time in the power_t list. This function returns the power factor setpoint corresponding to the given time step and turbine index, using linear interpolation with the given time"""
-            power_factor = np.interp(time_step, setpoints['power_t'], np.array(setpoints['power_factor'])[:, i_t])
+            # power_factor = np.interp(time_step, setpoints['power_t'], np.array(setpoints['power_factor'])[:, i_t])
+            power_factor_list = [
+                [1 if x is None else x for x in row]
+                for row in setpoints['power_factor']
+            ]
+            power_factor = np.interp(
+                time_step,
+                setpoints['power_t'],
+                np.array(power_factor_list)[:, i_t],
+            )
             power_setpoint = power_factor * turbine.rated_power
             return power_setpoint
 

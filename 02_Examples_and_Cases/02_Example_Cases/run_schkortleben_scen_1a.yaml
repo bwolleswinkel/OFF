@@ -60,24 +60,62 @@ sim:
 io:                             # Needs to be written by the user
   data folder: ''
   simulation folder:
-
-
-# Wind farm settings
-#   The layout is given in x, y, z coordinates, where locations can be defined in meters or in D (rotor diameters).
-#   To distinguish between the two, the unit parameter is used. If set to D, the diameter parameter needs to be set.
-# NOTE: The layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the turbine information.
 wind_farm:
   name: turbine array
-  description: Single NREL 5 MW RWT
+  description: Schkortleben 12 turbine wind farm layout
 
   farm:
     layout_x:
-      - 0.0
+      - 772.3
+      - 787.8
+      - 1110.7
+      - 1467.1
+      - 1439.4
+      - 1414.5
+      - 1398.4
+      - 1374.3
+      - 1110.4
+      - 808.3
+      - 829.8
+      - 842.5
     layout_y:
-      - 0.0
+      - 1307.0
+      - 1579.4
+      - 1457.7
+      - 1817.5
+      - 1503.4
+      - 1238.5
+      - 998.4
+      - 750.2
+      - 588.0
+      - 937.7
+      - 2026.5
+      - 2314.3
     layout_z:
       - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
     turbine_type:
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
       - nrel_5mw
     unit:
       - 1.
@@ -101,23 +139,31 @@ ambient:
     air_density: 1.225
     reference_wind_height: 90.0 # Needs to be defined as FLORIS expects different turbine types (-1 might still work)
     turbulence_intensities:
-      - 0.06
+      - 0.35
     # NOTE: As described here, multiple conditions lead to linear interpolation
     wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 270.0
+      # - 185.0
+      # - 190.0
+      # - 180.0
+      - 190.0
     wind_directions_t:
+      # - 0.0
+      # - 50.0
+      # - 120.0
       - 0.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
       - 11.0
       - 10.0
       - 10.0
-      - 12.0
+      - 9.0
+      # - 11.0
     wind_speeds_t:
       - 0.0
       - 80.0
       - 120.0
       - 150.0
+      # - 0.0
     wind_veer: 0.0
     corr_overwrite_direction: true # All states are overwritten instead of only the first particle state
 
@@ -172,7 +218,7 @@ controller:
    orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
-     - [270.0]
+     - [190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0, 190.0]
    orientation_t:          # in s
      - 0.0
 
@@ -191,9 +237,12 @@ controller:
      type: 'lio'
      strategy: 'constant_tsr'
      power_factor:  # NOTE: This is the factor of rated power, so a value between 0 and 1.
-       - [0.5]
-       - [0.6]
-       - [0.5]
+       - [0.10, 0.11, ~, ~, ~, ~, 0.12, 0.33, 0.14, ~, ~, ~]
+       - [0.20, 0.21, ~, ~, ~, ~, 0.22, 0.33, 0.24, ~, ~, ~]
+       - [0.30, 0.31, ~, ~, ~, ~, 0.32, 0.33, 0.34, ~, ~, ~]
+      #  - [~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~]
+      #  - [~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~]
+      #  - [~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~]
      power_t:
        - 0.0
        - 100.0
@@ -201,7 +250,7 @@ controller:
 
 
 initial:
-  rotor_speed: [11]  # In RPM
+  rotor_speed: [11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]  # In RPM
 
 
 # Turbine information

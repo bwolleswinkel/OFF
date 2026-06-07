@@ -1,47 +1,12 @@
-# //////////////////////////////////////////////////////////////////// #
-#    ____  ______ ______ 
-#   / __ \|  ____|  ____|
-#  | |  | | |__  | |__   
-#  | |  | |  __| |  __|  
-#  | |__| | |    | |     
-#   \____/|_|    |_|     
-# //////////////////////////////////////////////////////////////////// #
-# Copyright (C) <2024>, M Becker (TUDelft), M Lejeune (UCLouvain)
-
-# List of the contributors to the development of OFF: see LICENSE file.
-# Description and complete License: see LICENSE file.
-  
-# This program (OFF) is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-
-# You should have received a copy of the GNU Affero General Public License
-# along with this program (see COPYING file).  If not, see <https://www.gnu.org/licenses/>.
-
-
-# //////////////////////////////////////////////////////////////////// #
-# Welcome to the OFF input file. This file is used to set up a simulation.
-# The yaml file contains multiple comments to explain the setup choices and the structure of the file.
-# If you experience issues, create a new issue on the GitHub page https://github.com/TUDelft-DataDrivenControl/OFF
-# //////////////////////////////////////////////////////////////////// #
-
-
 # Simulation settings
 #  The time step is given in seconds, the start and end time in seconds as well.
 sim:
-  name: Verify Sim
-  description: Single turbine with steady ambient conditions, wind turbine dynamics and downregulation
+  name: Testing operational modes
+  description: Three turbines with different operational modes
   sim:
-    # NOTE: The time step needs to be small enough to resolve the dynamics of the system, i.e., for forward Euler to be numerically stable.
     time step: 0.1
     time start: 0.0
-    time end: 200.0
+    time end: 60.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
@@ -68,16 +33,24 @@ io:                             # Needs to be written by the user
 # NOTE: The layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the turbine information.
 wind_farm:
   name: turbine array
-  description: Single NREL 5 MW RWT
+  description: Three NREL 5 MW RWT
 
   farm:
     layout_x:
-      - 0.0
+      - 608.0
+      - 1500.0
+      - 2392.0
     layout_y:
-      - 0.0
+      - 500.0
+      - 500.0
+      - 500.0
     layout_z:
       - 0.0
+      - 0.0
+      - 0.0
     turbine_type:
+      - nrel_5mw
+      - nrel_5mw
       - nrel_5mw
     unit:
       - 1.
@@ -95,29 +68,27 @@ wind_farm:
 #  There is also only one ambient corrector as of now.
 ambient:
   name: ambient_conditions
-  description: Constant wind speed at 16 m/s coming from 270 deg (0 deg = north)
+  description: Constant wind speed at 8 m/s coming from 270 deg (0 deg = north)
 
   flow_field: # This struct is passed on to the AmbientCorrector to feed in the new flow properties
     air_density: 1.225
     reference_wind_height: 90.0 # Needs to be defined as FLORIS expects different turbine types (-1 might still work)
     turbulence_intensities:
-      - 0.06
+      - 0.16
     # NOTE: As described here, multiple conditions lead to linear interpolation
     wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
       - 270.0
+      - 270.0
     wind_directions_t:
       - 0.0
+      - 30.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
-      - 11.0
       - 10.0
-      - 10.0
-      - 12.0
+      - 16.0
     wind_speeds_t:
       - 0.0
-      - 80.0
-      - 120.0
-      - 150.0
+      - 50.0
     wind_veer: 0.0
     corr_overwrite_direction: true # All states are overwritten instead of only the first particle state
 
@@ -172,9 +143,11 @@ controller:
    orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
    path_to_orientation_csv: "/_.csv"
    orientation_deg:        # in deg
-     - [270.0]
+     - [270.0, 270.0, 270.0]
+     - [270.0, 270.0, 270.0]
    orientation_t:          # in s
      - 0.0
+     - 30.0
 
 #  power_controller:
 #    name: K-omega-squared controller
@@ -191,17 +164,36 @@ controller:
      type: 'lio'
      strategy: 'constant_tsr'
      power_factor:  # NOTE: This is the factor of rated power, so a value between 0 and 1.
-       - [0.5]
-       - [0.6]
-       - [0.5]
+       - [0.4, 0.2, 0.4]
+       - [0.4, 0.2, 0.4]
+       - [0.4, 0.2, 0.4]
      power_t:
        - 0.0
-       - 100.0
-       - 150.0
+       - 10.0
+       - 15.0
 
 
 initial:
-  rotor_speed: [11]  # In RPM
+  rotor_speed: [10, 10, 10]  # In RPM
+  generator_torque: [6E5, 6E5, 6E5]  # FIXME: This is kind of a temporary hack/workaround
+
+
+events:
+  name: Operational mode changes
+  description: Sets the operational mode of each turbine
+
+  settings:
+    op_mode:
+      # - [              ~,                ~,      'parked']
+      # - [              ~,                ~, 'starting_up']
+      # - ['shutting_down', 'emergency_stop',             ~]
+      - [~, ~, 'parked']
+      - [~, ~, 'starting_up']
+      - [~, ~, ~]
+    op_mode_t:
+      - 5.0
+      - 10.0
+      - 30.0
 
 
 # Turbine information

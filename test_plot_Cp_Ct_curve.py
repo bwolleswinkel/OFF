@@ -74,6 +74,10 @@ Ct_interp = lambda lbd_pitch, lbd_tsr: sp.interpolate.griddata(np.array((pitch.f
 # Find the maximum Cp value
 # indices_max_value = np.nanargmax(Cp)
 # pitch_max_value, tsr_max_value, Cp_max_value =  Cp[indices_max_value]
+
+# Find the min and max value
+Cp_grid = Cp_interp(np.linspace(*pitch_range, 100), np.linspace(*pitch_range, 100))
+Cp_min, Cp_max = np.nanmin(Cp_grid), np.nanmax(Cp_grid)
     
 # Calculate the available and downregulation power
 P_down_available = np.interp(u_down, u, P_u)
@@ -92,6 +96,10 @@ tsr_lambda_available = np.linspace(*tsr_range, 500)[sp.signal.argrelextrema(np.a
 rotor_speed_down = (u_down * np.array(tsr_range)) / rotor_radius * (60 / (2 * np.pi))  # Convert to RPM
 
 # ------ PRINTING ------
+
+# Print the values
+print("--- Cp grid ---")
+print(f"Min: {Cp_min:.3f}, max: {Cp_max:.3f}")
 
 # Print the point of downregulation
 print("--- Downregulation ---")

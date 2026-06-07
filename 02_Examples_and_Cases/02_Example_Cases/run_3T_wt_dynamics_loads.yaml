@@ -41,7 +41,7 @@ sim:
     # NOTE: The time step needs to be small enough to resolve the dynamics of the system, i.e., for forward Euler to be numerically stable.
     time step: 0.1
     time start: 0.0
-    time end: 50.0
+    time end: 120.0
       
   # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
   #   The console logging has a feature where the log messages are colored based on their origin.
@@ -112,18 +112,26 @@ ambient:
       - 0.06
     # NOTE: As described here, multiple conditions lead to linear interpolation
     wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
+      - 265.0
+      - 255.0
       - 270.0
-      - 250.0
+      - 265.0
     wind_directions_t:
       - 0.0
-      - 30.0
+      - 20.0
+      - 60.0
+      - 120.0
     wind_shear: 0.12
     wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
       - 8.0
-      - 4.0
+      - 6.0
+      - 6.0
+      - 8.0
     wind_speeds_t:
       - 0.0
       - 50.0
+      - 100.0
+      - 120.0
     wind_veer: 0.0
     corr_overwrite_direction: true # All states are overwritten instead of only the first particle state
 
@@ -180,9 +188,11 @@ controller:
    orientation_deg:        # in deg
      - [270.0, 270.0, 270.0]
      - [260.0, 250.0, 240.0]
+     - [270.0, 250.0, 250.0]
    orientation_t:          # in s
      - 0.0
      - 30.0
+     - 90.0
 
 
 # Turbine information

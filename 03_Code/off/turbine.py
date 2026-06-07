@@ -547,6 +547,7 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         self.operational_mode: Literal['power_production', 'shutting_down', 'emergency_stop', 'parked', 'starting_up'] = 'power_production'
         self.turbine_data = turbine_data
         self.rated_wind_speed = turbine_data['performance']['rated_wind_speed']
+        self.rated_power = turbine_data['performance']['rated_power']
         self.rotor_radius = self.diameter / 2
         self.inertia = turbine_data['hub_inertia_low_speed_shaft']
         self.generator_efficiency = turbine_data['generator_efficiency']
@@ -558,6 +559,8 @@ class TurbineSimpleDriveTrain(HAWT_ADM):
         self.Cp_interp = None
         self.pitch_interp = None
         self.Cp_power_mode = 'not_set'
+        self.opt_Cp: float = 0.482  # FIXME: Currently hardcoded, but should be passed as an argument
+        self.opt_tsr: float = turbine_data['TSR']
         # FIXME: For now, we have just hard-coded this for the NREL 5MW turbine
         self.K = 2680752.3292693296
         # FIXME: This is just a random constant
