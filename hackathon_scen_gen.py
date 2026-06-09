@@ -1,13 +1,25 @@
 """Script to generate scenarios for the hackathon"""
 
 from __future__ import annotations
+
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 import matplotlib.pyplot as plt
+import yaml
 
 if TYPE_CHECKING:
     from typing import Literal
+
+
+# FROM: GitHub Copilot Gemini 3 Flash | 2026/06/09
+class IndentedDumper(yaml.Dumper):
+    """Custom YAML dumper that indents lists and dictionaries such that list items following keys 
+    are indented (with 2 spaces) under the key, rather than at the same level"""
+    def increase_indent(self, flow=False, indentless=False):
+        # This force indentless=False to ensure lists are always indented
+        return super(IndentedDumper, self).increase_indent(flow, False)
 
 
 # FROM: GitHub Copilot Claude Haiku 4.5 | 2026/05/28
@@ -83,7 +95,10 @@ def add_varying_sine(trend_t, trend_v, dt, t_end, period_range, amp_base,
 
 if __name__ == '__main__':
     # Set the seed
-    np.random.seed()
+    seed: int | None = 45538370
+
+    # Set the output path
+    path_to_out: Path = Path('run_amb.yaml')
 
     # Set parameters
     timestep: int = 4
@@ -132,6 +147,10 @@ if __name__ == '__main__':
     WAVE_WS_AMPLITUDE = [0.1, 1]
     
     # === GENERATE SCENARIO ===
+
+    # Set the seed
+    seed = np.random.randint(0, 2**32 - 1) if seed is None else seed
+    np.random.seed(seed)
 
     # Select the number of changes
     num_wd_changes = np.random.choice([0, 1, 2], p=([1, 0, 0]
@@ -216,3 +235,42 @@ if __name__ == '__main__':
                  f"{'constant grid demand' if grid_demand == 'constant' else 'ERROR'}")
     plt.tight_layout()
     plt.show()
+
+    # === SAVE TO YAML ===
+
+    if True:
+        #: Check if you want to save the data   
+        parse = input(f"Do you want to save the data under the name '{path_to_out}'? (disable by setting this conditional to False): [y]es/[n]o ")
+        if not parse.casefold() in ['y', 'yes']:
+            pass
+        else:
+            data = {
+                    'ambient': {
+                        'name': "Automatically generated 10-min scenario",
+                        'description': f"Synthetically generated scenario based on specified qualitative characteristics (wind_direction_overlap={wind_direction_overlap}, wind_direction_change={wind_direction_change}, wind_speed_rated={wind_speed_rated}, wind_speed_change={wind_speed_change}, turbulence_intensity={turbulence_intensity}, grid_demand={grid_demand} | seed={seed})",
+                        'flow_field': {
+                            'air_density': 1.225,
+                            'turbulence_intensities': [round(ti[0], 2)],
+                            'wind_directions': [round(elem, 1) for elem in wd],
+                            'wind_directions_t': [int(elem) for elem in wd_t.tolist()],
+                            'wind_speeds': [round(elem, 1) for elem in ws],
+                            'wind_speeds_t': [int(elem) for elem in ws_t.tolist()],
+                            'grid_demands': [int(grid[0] * 1E6)],
+                            'wind_shear': 0.12,
+                            'wind_veer': 0.0,
+                            'corr_overwrite_direction': True,
+                        }
+                    }
+                }
+            
+            yaml_string = yaml.dump(data, Dumper=IndentedDumper, default_flow_style=False, sort_keys=False)
+
+            yaml_string = yaml_string.replace(
+                'corr_overwrite_direction: true', 
+                'corr_overwrite_direction: true  # All states are overwritten instead of only the first particle state'
+            )
+
+            yaml_string = yaml_string.replace('  flow_field:', '\n  flow_field:')
+
+            with open('run_amb.yaml', 'w') as f:
+                f.write(yaml_string)
