@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -94,10 +95,14 @@ def add_varying_sine(trend_t, trend_v, dt, t_end, period_range, amp_base,
 
 
 if __name__ == '__main__':
-    # Set the seed
-    seed: int | None = 45538370
+    # IDEA: Make the script itself 20 mins, but then the simulation time is 1 hour
 
-    # Set the output path
+    # Set the seed
+    seed: int | None = None
+
+    # Set the saving configuration
+    directory_path: Path = Path('hackathon')
+    data_path: Path = Path('single_run_data')
     path_to_out: Path = Path('run_amb.yaml')
 
     # Set parameters
@@ -240,10 +245,21 @@ if __name__ == '__main__':
 
     if True:
         #: Check if you want to save the data   
-        parse = input(f"Do you want to save the data under the name '{path_to_out}'? (disable by setting this conditional to False): [y]es/[n]o ")
+        parse = input(f"Do you want to save the data under the name '{directory_path / path_to_out}'? (disable by setting this conditional to False): [y]es/[n]o ")
         if not parse.casefold() in ['y', 'yes']:
             pass
         else:
+            #: Save the data as .npy
+            t_vals = np.array(wd_t)
+            wd = np.array(wd)
+            ws = np.array(ws)
+            ti = np.full(t_vals.size, ti[0])
+            grid = np.full(t_vals.size, grid[0] * 1E6)
+            data_np = np.column_stack([t_vals, wd, ws, ti, grid])
+            now = datetime.now()
+            file_name = 'D' + f'{now:%Y_%m_%d}' + '_T' + f'{now:%H_%M_%S}'
+            np.save(directory_path / data_path / file_name, data_np)
+            #: Save the data as yaml
             data = {
                     'ambient': {
                         'name': "Automatically generated 10-min scenario",
@@ -255,7 +271,8 @@ if __name__ == '__main__':
                             'wind_directions_t': [int(elem) for elem in wd_t.tolist()],
                             'wind_speeds': [round(elem, 1) for elem in ws],
                             'wind_speeds_t': [int(elem) for elem in ws_t.tolist()],
-                            'grid_demands': [int(grid[0] * 1E6)],
+                            'requested_power': [int(grid[0] * 1E6)],
+                            'requested_power_t': [0],
                             'wind_shear': 0.12,
                             'wind_veer': 0.0,
                             'corr_overwrite_direction': True,
@@ -272,5 +289,5 @@ if __name__ == '__main__':
 
             yaml_string = yaml_string.replace('  flow_field:', '\n  flow_field:')
 
-            with open('run_amb.yaml', 'w') as f:
+            with open(directory_path / (path_to_out.stem + '_' + file_name + path_to_out.suffix), 'w') as f:
                 f.write(yaml_string)
