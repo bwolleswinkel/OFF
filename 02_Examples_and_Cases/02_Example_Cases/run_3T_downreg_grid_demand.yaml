@@ -1,0 +1,576 @@
+# Simulation settings
+#  The time step is given in seconds, the start and end time in seconds as well.
+sim:
+  name: Testing operational modes
+  description: Three turbines with different operational modes
+  sim:
+    time step: 0.1
+    time start: 0.0
+    time end: 60.0
+      
+  # The logging is split in two, one for the console and one for a file. The level can be set to DEBUG, INFO, WARNING, ERROR, CRITICAL
+  #   The console logging has a feature where the log messages are colored based on their origin.
+  logging:
+    console:
+      enable: true
+      level: WARNING # INFO
+    file:
+      enable: true
+      level: WARNING
+
+
+# OFF stores all results in a run folder, which is by defalut located at "/runs". The user can specify a different location.
+#   The name of the default folder is "off_run_" followed by the current date and exact time.
+# The run folder contains a copy of the input yaml, the yaml used to init FLORIS, as well as the log file, and outputs.
+io:                             # Needs to be written by the user
+  data folder: ''
+  simulation folder:
+
+
+# Wind farm settings
+#   The layout is given in x, y, z coordinates, where locations can be defined in meters or in D (rotor diameters).
+#   To distinguish between the two, the unit parameter is used. If set to D, the diameter parameter needs to be set.
+# NOTE: The layout refers to the BOTTOM of the turbine, not the rotor center. That is calculated internally based on the turbine information.
+wind_farm:
+  name: turbine array
+  description: Three NREL 5 MW RWT
+
+  farm:
+    layout_x:
+      - 608.0
+      - 1500.0
+      - 2392.0
+    layout_y:
+      - 500.0
+      - 500.0
+      - 500.0
+    layout_z:
+      - 0.0
+      - 0.0
+      - 0.0
+    turbine_type:
+      - nrel_5mw
+      - nrel_5mw
+      - nrel_5mw
+    unit:
+      - 1.
+    boundaries_xyz:
+      - -2.0
+      - 12.0
+      - -4.0
+      - 4.0
+      - 0.0
+      - 5.0
+
+
+# Ambient conditions used during the simulation
+#  Currently the code only supports time variations of the wind speed and direction. If a single value is given, it is assumed to be constant.
+#  There is also only one ambient corrector as of now.
+ambient:
+  name: ambient_conditions
+  description: Constant wind speed at 8 m/s coming from 270 deg (0 deg = north)
+
+  flow_field: # This struct is passed on to the AmbientCorrector to feed in the new flow properties
+    air_density: 1.225
+    reference_wind_height: 90.0 # Needs to be defined as FLORIS expects different turbine types (-1 might still work)
+    turbulence_intensities:
+      - 0.16
+    # NOTE: As described here, multiple conditions lead to linear interpolation
+    wind_directions: # a single value indicates constant conditions, multiple lead to linear interpolation
+      - 255.0
+      - 255.0
+      - 270.0
+    wind_directions_t:
+      - 0.0
+      - 10.0
+      - 15.0
+    wind_shear: 0.12
+    wind_speeds: # a single value indicates constant conditions, multiple lead to linear interpolation
+      - 8.0
+    wind_speeds_t:
+      - 0.0
+    wind_veer: 0.0
+    corr_overwrite_direction: true # All states are overwritten instead of only the first particle state
+
+
+# Wake solver settings
+#  Here we select the Temporary Wind Farm (TWF) solver and the FLORIS wake model
+#   As of writing, the TWFSolver is the ONLY wake solver available. It can use any FLORIS model, as well as a build in PythonGaussianWake model.
+#   For future wake solvers, the initialization of the solver needs to be adapted, as it is hardcoded of now (see OFF.__init__).
+solver:
+  name: TWF FLORIS
+  description: FLORIDyn - A dynamic and flexible framework for real-time wind farm control, Becker et al. 2022
+
+  settings:
+    wake_solver: "TWFSolver"
+    wake_model: "FLORIS GCH"  #"PythonGaussianWake" # "FLORIS GCH"
+    op_propagation: "frozen turbulence"
+    extrapolation: "pair"
+    # Number of OPs per turbine. The chain of OPs should span long enough to cover the whole wind farm.
+    #  n_op * time_step * u_free_stream = covered distance
+    n_op: 200
+
+
+# Wake model settings
+#   These need to fit the wake model that the wake solver is using.
+wake:
+  name: GCH
+  description: Gaussian Curl Hybrid wake model
+
+  settings:
+    # The yaml path is used to create an input file for the FLORIS model, before it is moved to the run folder
+    yaml_path: "02_Examples_and_Cases/00_Inputs/01_FLORIS/not_relevant_.yaml"
+    # The FLORIS input file is generated based on the settings linked below as well as the info in this yaml (e.g. turbine type, layout)
+    floris_logging: "02_Examples_and_Cases/00_Inputs/01_FLORIS/00_Logging/warning_none.yaml"
+    floris_solver: "02_Examples_and_Cases/00_Inputs/01_FLORIS/01_Solver/turbine_grid_3.yaml"
+    # This is where the floris model and settings are changed!
+    floris_wake: "02_Examples_and_Cases/00_Inputs/01_FLORIS/02_Wake/gch.yaml"
+    # Settings not used yet
+    nRP: 10
+    rotor discretization: Isocell
+
+
+controller:
+  name: prescribed yaw controller
+  description: Sets the turbine orientations based on a set of prescribed yaw angles along with time stamps
+
+  settings:
+      ctl: "prescribed yaw controller"
+      # Can be "csv" or "yaml"
+      #  - csv:  The file needs to contain the time stamps in the first column, and yaw / orientation angles for each turbine in the following columns.
+      #  - yaml: The orientation needs to be added below
+      input_method: "yaml"    
+      orientation: False      # Checks if the data is given as orientation or, if false, as yaw angles
+      path_to_orientation_csv: "/_.csv"
+      orientation_deg:        # in deg
+        - [255.0, 255.0, 255.0]
+        - [255.0, 255.0, 255.0]
+        - [270.0, 270.0, 270.0]
+      orientation_t:          # in s
+        - 0.0
+        - 10.0
+        - 15.0
+
+#  power_controller:
+#    name: K-omega-squared controller
+#    description: Constant optimal gain and steady-state blade pitch LUT
+
+#    settings:
+#      type: 'k_omega_squared'
+
+  power_controller:
+    name: constant tip-speed downregulation controller
+    description: Set the power setpoint and rotor speed setpoint based on a constant tip-speed ratio
+
+    settings:
+      type: 'lio'
+      strategy: 'constant_tsr'
+
+      supervisory_controller:
+        settings:
+          type: 'demand_allocation'
+          strategy: 'available_evenly' 
+          demand:  # NOTE: This is the total grid demand, in W
+            - 2_000_000
+            - 3_000_000
+          demand_t:
+            - 0.0
+            - 30.0
+
+
+initial:
+  rotor_speed: [5, 5, 5]  # In RPM
+  generator_torque: [968_000, 968_000, 968_000]  # FIXME: This is kind of a temporary hack/workaround
+
+
+events:
+  name: Operational mode changes
+  description: Sets the operational mode of each turbine
+
+  settings:
+    op_mode:
+      - [~, ~, ~]
+    op_mode_t:
+      - 0.0
+
+
+# Turbine information
+#  The turbine information is used by OFF as well as by the wake model.
+#  Current issue (FLORIS): The turbine information is NOT passed on to FLORIS, so FLORIS needs to have the same information in its turbine library.
+#  In OFF, the turbine model is used to calculate the hub height & the power generated
+#  The turbine type needs to only be saved once. You can also add other, unused turbines to the list.
+turbine:
+  nrel_5mw:
+    name: NREL 5MW Reference Wind Turbine
+    performance:
+      rated_power: 5000000
+      rated_rotor_speed: 12.1  # In RPM
+      rated_wind_speed: 11.4
+      cutin_wind_speed: 3.0
+      cutout_wind_speed: 25.0
+      Cp_curve:
+        Cp_tb_values: ['02_Examples_and_Cases', '00_Inputs', '00_OFF', '05_Turbine', 'NREL5MW', 'Cp_Ct_NREL5MW_nrel.csv']  # NOTE: Path to .csv file with tabulated values
+        # Cp_tb_tsr: [ ]          # in (m/s)/(m/s)
+        # Cp_tb_bpa: [ ]          # in deg
+        Cp_u_values:
+          - 0.0
+          - 0.0
+          - 0.19805624099798788
+          - 0.3663888708088531
+          - 0.42645082617303826
+          - 0.4506764123138831
+          - 0.4567995571991951
+          - 0.4569688883863179
+          - 0.457028651943662
+          - 0.4570953179074446
+          - 0.4570317232676056
+          - 0.4569637666639838
+          - 0.45688264249496985
+          - 0.45681147971026154
+          - 0.45669125361770624
+          - 0.4566047133199195
+          - 0.4565553821971831
+          - 0.45596106296981886
+          - 0.4551132635975855
+          - 0.45501972592354123
+          - 0.4549272604587525
+          - 0.4547487048531187
+          - 0.4545229264547283
+          - 0.45426359047082504
+          - 0.4539503106800805
+          - 0.4536379065110664
+          - 0.4532469727484909
+          - 0.45283465558148894
+          - 0.4524064604104628
+          - 0.45195826459557337
+          - 0.4514906474527162
+          - 0.4509306588651911
+          - 0.44540965108645125
+          - 0.43389101412622694
+          - 0.4227661523312414
+          - 0.41201838153737863
+          - 0.4016318587277821
+          - 0.39159153297061305
+          - 0.38188309960024613
+          - 0.3003614001407489
+          - 0.24048615018557776
+          - 0.19552414699532603
+          - 0.16110693264385387
+          - 0.13431589580892028
+          - 0.11315054802970258
+          - 0.09620848463467348
+          - 0.08248674951365317
+          - 0.07125515561054158
+          - 0.061973515787868645
+          - 0.05423637676577837
+          - 0.04773538745003077
+          - 0.04223321575099043
+          - 0.0
+          - 0.0
+        Cp_u_wind_speeds:
+          - 0.
+          - 2.9
+          - 3.
+          - 4.
+          - 5.
+          - 6.
+          - 7.
+          - 7.1
+          - 7.2
+          - 7.3
+          - 7.4
+          - 7.5
+          - 7.6
+          - 7.7
+          - 7.8
+          - 7.9
+          - 8.
+          - 9.
+          - 10.
+          - 10.1
+          - 10.2
+          - 10.3
+          - 10.4
+          - 10.5
+          - 10.6
+          - 10.7
+          - 10.8
+          - 10.9
+          - 11.  
+          - 11.1
+          - 11.2 
+          - 11.3 
+          - 11.4 
+          - 11.5 
+          - 11.6 
+          - 11.7 
+          - 11.8 
+          - 11.9 
+          - 12.  
+          - 13.
+          - 14. 
+          - 15.
+          - 16.
+          - 17.
+          - 18.
+          - 19.
+          - 20.
+          - 21.
+          - 22.
+          - 23.
+          - 24.
+          - 25.
+          - 25.1
+          - 50.
+      Ct_curve:
+        # Ct_tb_values: [ ]
+        # Ct_tb_tsr: [ ]
+        # Ct_tb_bpa: [ ]
+        Ct_u_values:
+          - 0.0
+          - 0.0
+          - 1.132034888
+          - 0.999470963
+          - 0.917697381
+          - 0.860849503
+          - 0.815371198
+          - 0.811614904
+          - 0.807939328
+          - 0.80443352
+          - 0.800993851
+          - 0.79768116
+          - 0.794529244
+          - 0.791495834
+          - 0.788560434
+          - 0.787217182
+          - 0.787127977
+          - 0.785839257
+          - 0.783812219
+          - 0.783568108
+          - 0.783328285
+          - 0.781194418
+          - 0.777292539
+          - 0.773464375
+          - 0.769690236
+          - 0.766001924
+          - 0.762348072
+          - 0.758760824
+          - 0.755242872
+          - 0.751792927
+          - 0.748434131
+          - 0.745113997
+          - 0.717806682
+          - 0.672204789
+          - 0.63831272
+          - 0.610176496
+          - 0.585456847
+          - 0.563222111
+          - 0.542912273
+          - 0.399312061
+          - 0.310517829
+          - 0.248633226
+          - 0.203543725
+          - 0.169616419
+          - 0.143478955
+          - 0.122938861
+          - 0.106515296
+          - 0.093026095
+          - 0.081648606
+          - 0.072197368
+          - 0.064388275
+          - 0.057782745
+          - 0.0
+          - 0.0
+        Ct_u_wind_speeds:
+          - 0.
+          - 2.9
+          - 3.
+          - 4.
+          - 5.
+          - 6.
+          - 7.
+          - 7.1
+          - 7.2
+          - 7.3
+          - 7.4
+          - 7.5
+          - 7.6
+          - 7.7
+          - 7.8
+          - 7.9
+          - 8.
+          - 9.
+          - 10.
+          - 10.1
+          - 10.2
+          - 10.3
+          - 10.4
+          - 10.5
+          - 10.6
+          - 10.7
+          - 10.8
+          - 10.9
+          - 11.  
+          - 11.1
+          - 11.2 
+          - 11.3 
+          - 11.4 
+          - 11.5 
+          - 11.6 
+          - 11.7 
+          - 11.8 
+          - 11.9 
+          - 12.  
+          - 13.
+          - 14. 
+          - 15.
+          - 16.
+          - 17.
+          - 18.
+          - 19.
+          - 20.
+          - 21.
+          - 22.
+          - 23.
+          - 24.
+          - 25.
+          - 25.1
+          - 50.
+    # FIXME: This should actually be a controller (as in, a controller in the yaml file), but for the time being, it's just tabulated values
+    pitch:
+      pitch_curve:
+        pitch_u_values:
+          - 0.00
+          - 3.83
+          - 6.60
+          - 8.70
+          - 10.45
+          - 12.06
+          - 13.54
+          - 14.92
+          - 16.23
+          - 17.47
+          - 18.70
+          - 19.94
+          - 21.18
+          - 22.35
+          - 23.47
+        pitch_u_wind_speeds:
+          - 11.4
+          - 12.0
+          - 13.0
+          - 14.0
+          - 15.0
+          - 16.0
+          - 17.0
+          - 18.0
+          - 19.0
+          - 20.0
+          - 21.0
+          - 22.0
+          - 23.0
+          - 24.0
+          - 25.0
+    generator_efficiency: 0.944
+    hub_height: 90
+    hub_inertia_low_speed_shaft: 5_025_500  # in kg*m^2  # FIXME: Is this the correct inertia term?
+    inertia: 4.0802E7
+    pP: 1.88  # FIXME: These are from the IEA 10MW turbine
+    pT: 1.88  # FIXME: These are from the IEA 10MW turbine
+    rotor_diameter: 126
+    blade_mass: 17_740  # in kg
+    blade_com: 20.475  # in m
+    # FIXME: Is this the best way to store lambda expression in a `.yaml` file?
+    # FROM: https://stackoverflow.com/questions/52884870/save-lambda-expressions-to-a-file  # nopep8
+    # FIXME: These are placeholder values, but 'reasonable' for the NREL 5MW RWT, with a max chord of approx 4 m
+    blade_chord: 'lambda fraction: 1 + 4 * np.exp(-0.001 * (fraction - 15) ** 2)'  # in m, fraction ∈ (0, 1) is the normalized radial position along the blade
+    TSR: 7.55
+    ref_density_cp_ct: 1.225
+    ref_tilt_cp_ct: 5
+    # FIXME: This should be 5, but is set to 0 because tilt is not currently incorporated in the loads model
+    shaft_tilt: 0  # in deg  
+    # Determines the class of the turbine, other types like VAWT are not supported yet
+    # turbine_type: HAWT
+    # Determines if the turbine is fixed base or floating, currently only fixed base is supported
+    installation: fixed
+
+  dynamics:
+    model: 'simple_drive_train'
+    # loads: 'first_principles'
+
+
+# Visualization settings
+#  As of now, the visualization is mainly used for debugging purposes and many settings are placeholders.
+vis:
+  grid:
+    generate: True  # Master-switch to generate & store flow field data
+    # As OFF isn't grid based, the flow field plots need a grid to be generated.
+    boundaries:
+      - [ -2, 12]                 # x in D or m
+      - [ -2, 12]                 # y in D or m
+      - [ 0, 3]                   # z in D or m
+    unit:
+      - D
+    # Only needed if unit was set to D
+    diameter:
+      - 178.4
+    # x, y, z in points
+    resolution: [ 301, 301, 10 ] 
+    volume_3d: False
+    slice_2d: True
+    slice_2d_xy: [ 119.0 ]          # z-coordinates for xy slices
+    slice_2d_xz: [ ]                # y-coordinates for xz slices
+    slice_2d_yz: [ ]                # x-coordinates for yz slices
+    slice_2d_p:                     # x,y,z coordinate of a point on a plane
+      - [ ]
+    slice_2d_n:                     # x,y,z coordinate of a normal vector on a plane
+      - [ ]
+    data_vel_background: True
+    data_vel_effective: True
+    data_dir_background: True
+    data_ti_background: False
+    data_ti_effective: True
+    data_op_markers: True
+
+
+  turbine:
+    generate: True  # Master-switch to generate & store turbine data
+    plot_together: False  # One plot of one QoI with all turbines above one another
+    plot_seperated: True  # One plot with a subplot for every turbine
+    plot_selection: False # One plot where you can choose which turbine to view
+    input_yaw: True
+    input_Ct: False
+    output_Power: True
+    output_EffU: False
+    output_Red: False
+    farm_interaction: False
+    farm_layout: False
+    store_data: True
+
+  debug:
+    # Triggers a debug plot, which creates a voronoi "prism" with the TWF models
+    effective_wf_tile: False  
+    # Generates the tiled landscape in a 5 color scheme
+    effective_wf_tile_5color: False  
+    # Triggers a debug plot during runtime of the wakes passed on to the wake model
+    effective_wf_layout: False  
+    # Times at witch a debug plot of the wind farm is generated
+    # FIXME: It appear that, whenever the time instance is not exactly in the simulation time, it is not plotted; we need to use nearest neighbor interpolation of some sort (and maybe display a warning).
+    time: [80.0, 80.2, 80.4, 80.6, 80.8, 81.0] 
+    # Turbines for which the debug plot is created
+    iT: [0, 1] 
+    # Generates the effective wind speed across the farm based on a ghost turbine
+    # FIXME: Setting this to True generates the error "ValueError: turbine_type must have the same number of entries as layout_x/layout_y or have a single turbine_type value. This error can arise if you set the turbine_type or alter the operation model before setting the layout."
+    turbine_effective_wind_speed: False
+    # Plots the data, requires the turbine_effective_wind_speed to be true
+    turbine_effective_wind_speed_plot: True 
+    # Adds dots for the particles
+    turbine_effective_wind_speed_plot_ops: True 
+    # Plots the data, requires the turbine_effective_wind_speed to be true
+    turbine_effective_wind_speed_show_plot: True 
+    # Stores the contour plot as .png
+    turbine_effective_wind_speed_store_plot: True 
+    # Stores the data as .csv in the run folder
+    turbine_effective_wind_speed_store_data: True 
+    # NOTE: This was added by me
+    rotor_plane_wind_speed: True

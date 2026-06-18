@@ -63,10 +63,10 @@ def main():
     # run_nine_turbine_marcus_revised
     # run_example_bart_wt_dynamics
     # run_3T_wt_dynamics_loads
+    # run_9T_marcus_wt_dynamics  # FIXME: Results are garbage, probably because Cp is not correctly calculated? Or incorrect parameters? 
     # run_schkortleben
     # run_schkortleben_shutdown
     # run_1T_ss_wt_dynamics_downregulation
-    # run_1T_downregulation_simulink
     # run_schkortleben_downregulation
     # run_schkortleben_downregulation_half
     # run_3T_op_mode
@@ -74,7 +74,12 @@ def main():
     # run_3T_ext_ctrl
     # run_3T_downreg
     # run_schkortleben_scen_1a
-    input_file_name = 'run_3T_wt_dynamics_loads'  # NOTE: Without .yaml
+    # run_1T_downregulation_simulink
+    # run_3T_downreg_grid_demand
+    # run_3T_downreg_grid_shutdown
+    # run_1T_k_omega_simulink
+    # run_1T_k_omega_shutdown
+    input_file_name = 'run_1T_k_omega_shutdown'  # NOTE: Without .yaml
 
     # ====== BART ======
 

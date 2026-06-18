@@ -17,7 +17,9 @@
 # along with this program (see COPYING file).  If not, see <https://www.gnu.org/licenses/>.
 
 # ====== BART ======
+from __future__ import annotations
 from typing import Literal
+from dataclasses import dataclass
 # ====== BART ======
 
 import numpy as np
@@ -742,7 +744,9 @@ class KOmegaSquaredController(PowerController):
 class DownregulationControllerLio(PowerController):
     """Controller to set the power setpoint for downregulation based on the work of Lio et al."""
 
-    def __init__(self, rotor_setpoint_strategy: Literal['constant_omega', 'max_omega', 'constant_tsr', 'min_Ct'], setpoints: dict):
+    def __init__(self,
+                 rotor_setpoint_strategy: Literal['constant_omega', 'max_omega', 'constant_tsr', 'min_Ct'],
+                 setpoints: dict):
         self.rotor_setpoint_strategy: str = rotor_setpoint_strategy
         self.setpoints: dict[str, list[float]] = setpoints
         self.power_setpoint: list[float] = [np.nan for _ in range(len(setpoints['power_factor'][0]))]
@@ -756,6 +760,9 @@ class DownregulationControllerLio(PowerController):
         self.K_I_pitch: float = 0
         self.error: list[float] = [0]  # List to store the error values for the integral action of the greedy pitch controller
         self.anti_windup_window: int | None = 1
+        self.pitch_limits: tuple[float, float] | None = (-5, 90)  # In deg
+        if self.pitch_limits is not None:
+            self.pitch_limits = tuple(np.deg2rad(self.pitch_limits))
 
     def __call__(self, turbine: tur, i_t: int, time_step: float, wind_speed: float) -> tur:
 
@@ -809,6 +816,9 @@ class DownregulationControllerLio(PowerController):
             else:
                 integral_term = np.sum([self.error[i] * self.dt for i in range(-self.anti_windup_window, -1)])
             pitch = self.K_P_pitch * error_t + self.K_I_pitch * integral_term
+        #: Saturate the pitch
+        if self.pitch_limits is not None:
+            pitch = np.clip(pitch, *self.pitch_limits)
         #: Calculate the generator torque
         if wind_speed < wind_speed_derated:
             #: Compute the anti-windup integral action
@@ -833,6 +843,178 @@ class DownregulationControllerLio(PowerController):
         self.wind_speed_derated[i_t] = wind_speed_derated
         self.T_g[i_t] = T_g
         self.pitch[i_t] = pitch
+
+
+class DownregulationWithSupervisoryController(DownregulationControllerLio):
+    
+    def __init__(self,
+                 rotor_setpoint_strategy: Literal['constant_omega', 'max_omega', 'constant_tsr', 'min_Ct'],
+                 n_wt: int,
+                 supervisory_controller: SupervisoryController,
+                 ) -> None:
+        self.rotor_setpoint_strategy: str = rotor_setpoint_strategy
+        self.power_setpoint: list[float] = [np.nan for _ in range(n_wt)]
+        self.rotor_setpoint: list[float] = [np.nan for _ in range(n_wt)]
+        self.wind_speed_derated: list[float] = [np.nan for _ in range(n_wt)]
+        self.T_g: list[float] = [np.nan for _ in range(n_wt)]
+        self.pitch: list[float] = [np.nan for _ in range(n_wt)]
+        self.K_P_gen: float = 2E6
+        self.K_I_gen: float = 1E4
+        self.K_P_pitch: float = 1
+        self.K_I_pitch: float = 0
+        self.error: list[float] = [0]  # List to store the error values for the integral action of the greedy pitch controller
+        self.anti_windup_window: int | None = 1
+        self.pitch_limits: tuple[float, float] | None = (-5, 90)  # In deg
+        if self.pitch_limits is not None:
+            self.pitch_limits = tuple(np.deg2rad(self.pitch_limits))
+        self.supervisory_controller: SupervisoryController = supervisory_controller
+
+    def __call__(self,
+                 turbine: tur,
+                 idx_t: int,
+                 time_step: float,
+                 wind_speed: float
+                 ) -> tur:
+
+        #: Calculate the power setpoint
+        power_setpoint = self.supervisory_controller.get_power_setpoint(time_step, idx_t)
+        #: Calculate the derated wind speed
+        wind_speed_derated = ((power_setpoint) / (1/2 * turbine.AIR_DENSITY * np.pi * (turbine.rotor_radius ** 2) * turbine.opt_Cp * turbine.generator_efficiency)) ** (1/3)
+        #: Calculate the rotor speed setpoint based on the power setpoint and the chosen strategy
+        match self.rotor_setpoint_strategy:
+            case 'max_omega':
+                rotor_setpoint = convert(turbine.rated_rotor_speed, 'RPM', 'rad/s')
+            case 'constant_omega':
+                rotor_setpoint = (turbine.opt_tsr * wind_speed_derated) / turbine.rotor_radius
+            case 'constant_tsr':
+                rotor_setpoint = (turbine.opt_tsr * wind_speed) / turbine.rotor_radius
+            case 'min_Ct':
+                # FIXME: This is all very much spaghetti code
+                try:
+                    _ = self._init_lut
+                except AttributeError as _:
+                    Ct_min, P_fraction_vals, u_vals = np.load('dr_omega_vals.npy', allow_pickle=True), np.load('dr_P_fraction_vals.npy', allow_pickle=True), np.load('dr_u_vals.npy', allow_pickle=True)
+                    self.lut = LookupTable(Ct_min, [P_fraction_vals, u_vals])
+                    self._init_lut = True
+                rotor_setpoint = convert(self.lut(power_setpoint / turbine.rated_power, wind_speed), 'RPM', 'rad/s')
+            case _:
+                raise ValueError(f"Rotor setpoint strategy {self.rotor_setpoint_strategy} is not recognized.")
+        #: Compute the error
+        error_t = turbine.omega - rotor_setpoint
+        #: Compute the pitch angle based on the error in rotor speed
+        if wind_speed < wind_speed_derated:
+            pitch = 0
+        else: 
+            #: Compute the anti-windup integral action
+            if self.anti_windup_window is None or len(self.error) < self.anti_windup_window:
+                integral_term = np.sum([self.error[i] * self.dt for i in range(-len(self.error), -1)])
+            else:
+                integral_term = np.sum([self.error[i] * self.dt for i in range(-self.anti_windup_window, -1)])
+            pitch = self.K_P_pitch * error_t + self.K_I_pitch * integral_term
+        #: Saturate the pitch
+        if self.pitch_limits is not None:
+            pitch = np.clip(pitch, *self.pitch_limits)
+        #: Calculate the generator torque
+        if wind_speed < wind_speed_derated:
+            #: Compute the anti-windup integral action
+            if self.anti_windup_window is None or len(self.error) < self.anti_windup_window:
+                integral_term = np.sum([self.error[i] * self.dt for i in range(-len(self.error), -1)])
+            else:
+                integral_term = np.sum([self.error[i] * self.dt for i in range(-self.anti_windup_window, -1)])
+            T_g = self.K_P_gen * error_t + self.K_I_gen * integral_term
+        else:
+            T_g = power_setpoint / rotor_setpoint
+        #: Append the error to the list of errors
+        self.error.append(error_t)
+        #: Set the control actions to the turbine
+        turbine.T_g = T_g
+        turbine.pitch = pitch
+        #: Set the power setpoint
+        turbine.power_setpoint = power_setpoint
+
+        #: Save the latest setpoint
+        self.power_setpoint[idx_t] = power_setpoint
+        self.rotor_setpoint[idx_t] = rotor_setpoint
+        self.wind_speed_derated[idx_t] = wind_speed_derated
+        self.T_g[idx_t] = T_g
+        self.pitch[idx_t] = pitch
+
+
+class SupervisoryController(ABC):
+    """Class representing a supervisory controller"""
+
+    @abstractmethod
+    def get_power_setpoint(self, time_step: float, idx_wt: int):
+        """Calculate the power setpoint for the wind turbine"""
+
+    @abstractmethod
+    def get_yaw_setpoint(self, time_step: float, idx_st: int):
+        """Calculate teh yaw setpoint for the wind turbine"""
+
+
+class DelegateAvailablePowerGridDemand(SupervisoryController):
+    """Supervisory controller which takes an external grid demand, takes the effective wind speed of each wind turbine, and calculate the power setpoint distributed for each wind turbine based on available power"""
+
+    @dataclass
+    class WindTurbineParameters:
+        air_density: float
+        rotor_diameter: float
+        Cp_ws: Callable[[float], float]
+        gen_eff: float
+
+    def __init__(self,
+                 grid_demand: dict[str, list[float] | float],
+                 n_wt: int,
+                 wt_params: dict,
+                 ) -> None:
+        self.grid_demand = grid_demand['demand']
+        self.grid_demand_t = grid_demand['demand_t']
+        self.effective_ws: list[float] = [float('nan') for _ in range(n_wt)]
+        self.op_modes: list[str] = [None for _ in range(n_wt)]
+        self.n_wt: int = n_wt
+        turbine = wt_params[list(wt_params.keys())[0]]
+        Cp_table_ws: Callable[[float], float] = LookupTable(
+            data=np.array(turbine['performance']['Cp_curve']['Cp_u_values']),
+            axes=[np.array(turbine['performance']['Cp_curve']['Cp_u_wind_speeds'])],
+        )
+        self.wt_params: DelegateAvailablePowerGridDemand.WindTurbineParameters = self.WindTurbineParameters(
+            air_density=turbine['ref_density_cp_ct'],
+            rotor_diameter=turbine['rotor_diameter'],
+            Cp_ws=Cp_table_ws,
+            gen_eff=turbine['generator_efficiency'],
+        )
+
+    def get_power_setpoint(self,
+                           time_step: float,
+                           idx_wt: float):
+        
+        def grid_demand(time_step: float) -> float:
+            return np.interp(time_step, self.grid_demand_t, self.grid_demand)
+        
+        def calc_available(ws: float) -> float:
+            """Calculate available aerodynamic power, taking into account generator efficiency as well"""
+            # FIXME: Maybe we should also take yaw into account?
+            P_aero = (1 / 2) * self.wt_params.air_density * ((self.wt_params.rotor_diameter / 2) ** 2) * (ws ** 3) * self.wt_params.Cp_ws(ws)
+            P_eff = P_aero * self.wt_params.gen_eff
+            return P_eff
+
+        demand = grid_demand(time_step)
+        available_aero_power = [calc_available(self.effective_ws[idx]) for idx in range(self.n_wt)]
+        if not all([elem is None for elem in self.op_modes]):
+            for idx in range(self.n_wt):
+                if self.op_modes[idx] != 'power_production':
+                    available_aero_power[idx] = 0
+        factors = [available_aero_power[elem] / sum(available_aero_power) for elem in range(self.n_wt)]
+        # TEMP
+        #
+        print(f"time={time_step:.2f}, wt_idx={idx_wt}, demand={demand * 1E-6:.2f} MW, factors={[round(elem, 2) for elem in factors]}, power_setpoint={demand * factors[idx_wt] * 1E-6:.2f} MW ({(demand * factors[idx_wt]) / available_aero_power[idx_wt]:.2%}% of available)")
+        #
+        return demand * factors[idx_wt]
+    
+    def get_yaw_setpoint(self,
+                         time_step: float,
+                         idx_wt: float):
+        raise NotImplementedError("This supervisory controller does not implement yaw steering")
 
 
 class LookupTable:

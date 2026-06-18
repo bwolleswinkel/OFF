@@ -35,7 +35,7 @@ import shutil
 # ====== BART ======
 import warnings
 from off.turbine import TurbineSimpleDriveTrain, TurbineSimpleDriveTrainDownregulation
-from off.controller import DownregulationControllerLio
+from off.controller import DownregulationControllerLio, DelegateAvailablePowerGridDemand, DownregulationWithSupervisoryController
 # ====== BART ======
 
 from off import __file__ as OFF_PATH
@@ -106,9 +106,31 @@ class OFF:
         if 'power_controller' in settings_ctr_all:
             match settings_ctr_all['power_controller']['settings']['type']:
                 case 'k_omega_squared':
+                    self.supervisory_controller = None
                     self.power_controller = ctr.KOmegaSquaredController(self.settings_turbine, len(self.wind_farm.turbines))
                 case 'lio':
-                    self.power_controller = ctr.DownregulationControllerLio(settings_ctr_all['power_controller']['settings']['strategy'], {'power_factor': settings_ctr_all['power_controller']['settings']['power_factor'], 'power_t': settings_ctr_all['power_controller']['settings']['power_t']})
+                    #: Check if a supervisory controller is present
+                    if 'supervisory_controller' in (power_ctrl_settings := settings_ctr_all['power_controller']['settings']):
+                        match (strategy := power_ctrl_settings['supervisory_controller']['settings']['strategy']):
+                            case 'available_evenly':
+                                #: Create a supervisory controller
+                                demand: list[float] = power_ctrl_settings['supervisory_controller']['settings']['demand']
+                                demand_t: list[float] = power_ctrl_settings['supervisory_controller']['settings']['demand_t']
+                                self.supervisory_controller = DelegateAvailablePowerGridDemand(grid_demand={
+                                    'demand': demand,
+                                    'demand_t': demand_t,
+                                }, n_wt=self.wind_farm.nT, wt_params=settings_turbine)
+                                #: Create a power controller with a supervisory controller
+                                self.power_controller = DownregulationWithSupervisoryController(
+                                    rotor_setpoint_strategy=power_ctrl_settings['strategy'],
+                                    n_wt=self.wind_farm.nT,
+                                    supervisory_controller=self.supervisory_controller,
+                                )
+                            case _:
+                                raise ValueError(f"The strategy '{strategy}' is not recognized/implemented")
+                    else:
+                        self.supervisory_controller = None
+                        self.power_controller = ctr.DownregulationControllerLio(settings_ctr_all['power_controller']['settings']['strategy'], {'power_factor': settings_ctr_all['power_controller']['settings']['power_factor'], 'power_t': settings_ctr_all['power_controller']['settings']['power_t']})
                 case _:
                     raise ValueError(f"Power controller {settings_ctr_all['power_controller']['settings']['type']} is not recognized.")
         else:
@@ -371,6 +393,11 @@ class OFF:
                     m_tmp['T_g'] = self.power_controller.T_g[turb_idx]
                     # Save the pitch angle setpoint in the measurements
                     m_tmp['pitch'] = np.rad2deg(self.power_controller.pitch[turb_idx])  # In degrees
+                elif isinstance(self.power_controller, ctr.KOmegaSquaredController):
+                    # Save the generator torque setpoint in the measurements
+                    m_tmp['T_g'] = self.power_controller.T_g[turb_idx]
+                    # Save the pitch angle setpoint in the measurements
+                    m_tmp['pitch'] = np.rad2deg(self.power_controller.pitch[turb_idx])  # In degrees
                 # ====== BART ======
 
                 # Append turbine measurements to general measurement data
@@ -426,6 +453,13 @@ class OFF:
             # ====== BART ======
             # /////////////////////// POWER CONTROL ///////////////////////
             if self.power_controller is not None:
+                if self.supervisory_controller is not None:
+                    # Update the supervisory controller with the effective wind speeds
+                    # FIXME: I don not know if these values are correct...
+                    effective_ws = [util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]) for turb_idx in range(len(self.wind_farm.turbines))]
+                    self.supervisory_controller.effective_ws = effective_ws
+                    if True:  # FIXME: We can disable or enable the behavior of taking into account shut down turbines
+                        self.supervisory_controller.op_modes = [tur.operational_mode for tur in self.wind_farm.turbines]
                 for turb_idx, tur in enumerate(self.wind_farm.turbines):
                     self.power_controller(tur, turb_idx, t, util.ot_uv2abs(uv_r[turb_idx, 0], uv_r[turb_idx, 1]))
             # ====== BART ======
